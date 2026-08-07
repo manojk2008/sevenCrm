@@ -196,7 +196,7 @@ export function SalesContent() {
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                     <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} />
                     <YAxis axisLine={false} tickLine={false} tickFormatter={(val) => `₹${val/1000000}M`} tick={{ fontSize: 12, fill: '#64748b' }} />
-                    <Tooltip formatter={(value: number) => formatCurrency(value)} cursor={{fill: 'rgba(0,0,0,0.05)'}} />
+                    <Tooltip formatter={(value) => formatCurrency(typeof value === 'number' ? value : Number(value ?? 0))} cursor={{fill: 'rgba(0,0,0,0.05)'}} />
                     <Bar dataKey="value" fill="#4f46e5" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>

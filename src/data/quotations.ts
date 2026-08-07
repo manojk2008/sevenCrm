@@ -1,64 +1,62 @@
-import { Quotation } from '@/types';
+import { Quotation, QuotationStatus } from '@/types';
 import { clients } from './clients';
 import { products } from './products';
-import { enquiries } from './enquiries';
+import { users } from './users';
 
-const statuses = [
-  ...Array(3).fill('Draft'),
-  ...Array(5).fill('Pending'),
-  ...Array(4).fill('Accepted'),
-  ...Array(2).fill('Rejected'),
-  ...Array(1).fill('Expired')
+const statuses: QuotationStatus[] = [
+  ...Array(3).fill('draft'),
+  ...Array(5).fill('pending'),
+  ...Array(4).fill('accepted'),
+  ...Array(2).fill('rejected'),
+  ...Array(1).fill('expired'),
 ];
 
 export const quotations: Quotation[] = statuses.map((status, i) => {
   const client = clients[i % clients.length];
-  const enquiry = enquiries[i % enquiries.length];
-  
+  const assignedUser = users[4 + (i % 4)];
+  const clientContactName = client.contacts[0]?.name ?? 'Unknown Contact';
+
   const numItems = 2 + (i % 4);
   const lineItems = Array.from({ length: numItems }).map((_, j) => {
     const prod = products[(i + j) % products.length];
     const quantity = 1 + (j % 3);
     const amount = prod.price * quantity;
-    const cgst = amount * 0.09;
-    const sgst = amount * 0.09;
-    
+
     return {
-      id: `ql${i}_${j}`,
       productId: prod.id,
       productName: prod.name,
       quantity,
       unitPrice: prod.price,
+      discountPercentage: 0,
+      taxRate: prod.gstRate,
       amount,
-      taxAmount: cgst + sgst,
-      cgst,
-      sgst,
-      igst: 0,
-      total: amount + cgst + sgst
     };
   });
 
-  const subTotal = lineItems.reduce((acc, item) => acc + item.amount, 0);
-  const totalTax = lineItems.reduce((acc, item) => acc + item.taxAmount, 0);
-  const discount = (i % 3 === 0) ? subTotal * 0.1 : 0;
-  const grandTotal = subTotal + totalTax - discount;
+  const subtotal = lineItems.reduce((acc, item) => acc + item.amount, 0);
+  const discountAmount = i % 3 === 0 ? subtotal * 0.1 : 0;
+  const taxableAmount = subtotal - discountAmount;
+  const cgst = taxableAmount * 0.09;
+  const sgst = taxableAmount * 0.09;
+  const igst = 0;
+  const grandTotal = taxableAmount + cgst + sgst + igst;
 
   return {
     id: `q${i + 1}`,
     quotationNumber: `QT-2024-${String(i + 1).padStart(4, '0')}`,
     clientId: client.id,
-    enquiryId: enquiry.id,
-    status: status as any,
-    date: new Date(Date.now() - i * 86400000).toISOString(),
-    validUntil: new Date(Date.now() + 15 * 86400000).toISOString(),
-    subTotal,
-    discount,
-    totalTax,
-    grandTotal,
+    clientName: clientContactName,
     lineItems,
+    subtotal,
+    discountAmount,
+    taxAmount: { cgst, sgst, igst, total: cgst + sgst + igst },
+    grandTotal,
+    validUntil: new Date(Date.now() + 15 * 86400000).toISOString(),
     terms: '1. Payment 50% advance, 50% on completion. 2. Subject to Mumbai jurisdiction.',
     notes: 'Thank you for your business.',
-    createdAt: new Date(Date.now() - i * 86400000).toISOString(),
-    updatedAt: new Date().toISOString()
+    status,
+    createdBy: assignedUser.id,
+    sentAt: status !== 'draft' ? new Date(Date.now() - i * 86400000).toISOString() : undefined,
+    acceptedAt: status === 'accepted' ? new Date(Date.now() - (i - 1) * 86400000).toISOString() : undefined,
   };
 });

@@ -16,7 +16,6 @@ import {
   Mail,
   Phone,
   Search,
-  Filter,
   CheckSquare
 } from 'lucide-react';
 import {
@@ -47,6 +46,16 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -54,10 +63,8 @@ import { ClientForm } from './client-form';
 import type { ClientRecord } from './client-form';
 import { clients as clientFixtures } from '@/data/clients';
 import { toast } from 'sonner';
+import { formatCurrency, getInitials } from '@/lib/format';
 
-// Fallback formatters in case they don't exist
-const formatCurrency = (amount: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(amount);
-const getInitials = (name: string) => name.substring(0, 2).toUpperCase();
 const formatRelativeTime = (dateStr: string) => {
   const diff = Date.now() - new Date(dateStr).getTime();
   const days = Math.floor(diff / (1000 * 60 * 60 * 24));
@@ -67,12 +74,33 @@ const formatRelativeTime = (dateStr: string) => {
   return `${Math.floor(days / 30)} months ago`;
 };
 
-const initialClients: ClientRecord[] = (clientFixtures as unknown as Array<Record<string, any>>).map((client) => {
-  const primary = client.contacts?.find((contact: Record<string, any>) => contact.isPrimary) ?? client.contacts?.[0] ?? {};
-  const address = client.addresses?.find((item: Record<string, any>) => item.isPrimary) ?? client.addresses?.[0] ?? {};
+type ClientFixture = {
+  id: string;
+  name?: string;
+  companyName?: string;
+  contacts?: Array<{ name?: string; email?: string; phone?: string; designation?: string; isPrimary?: boolean }>;
+  addresses?: Array<{ street?: string; line1?: string; city?: string; state?: string; pincode?: string; country?: string; isPrimary?: boolean }>;
+  industries?: string[];
+  industry?: string;
+  email?: string;
+  phone?: string;
+  website?: string;
+  gstNumber?: string;
+  status?: string;
+  tags?: string[];
+  totalRevenue?: number;
+  revenue?: number;
+  updatedAt?: string;
+  notes?: string;
+};
+
+const initialClients: ClientRecord[] = (clientFixtures as unknown as ClientFixture[]).map((client) => {
+  const primary = client.contacts?.find((contact) => contact.isPrimary) ?? client.contacts?.[0] ?? {};
+  const address = client.addresses?.find((item) => item.isPrimary) ?? client.addresses?.[0] ?? {};
   return {
     id: String(client.id),
-    name: client.name ?? client.companyName,  
+    name: client.name ?? client.companyName ?? "",
+    contactperson: primary.name ?? "",
     industry: client.industries?.[0] ?? client.industry ?? "Other",
     email: primary.email ?? client.email ?? "",
     phone: primary.phone ?? client.phone ?? "",
@@ -92,11 +120,12 @@ export function ClientsContent() {
   const [data, setData] = useState<ClientRecord[]>(initialClients);
   const [view, setView] = useState<'table' | 'grid'>('table');
   const [sorting, setSorting] = useState<SortingState>([]);
-  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
+  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([{ id: 'status', value: 'active' }]);
   const [rowSelection, setRowSelection] = useState({});
   const [globalFilter, setGlobalFilter] = useState('');
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingClient, setEditingClient] = useState<ClientRecord | undefined>(undefined);
+  const [clientToDelete, setClientToDelete] = useState<ClientRecord | null>(null);
 
   const columns: ColumnDef<ClientRecord>[] = useMemo(() => [
     {
@@ -177,7 +206,7 @@ export function ClientsContent() {
       cell: ({ row }) => {
         const isActive = row.original.status === 'active';
         return (
-          <Badge className={cn("capitalize", isActive ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-100" : "bg-gray-100 text-gray-700 hover:bg-gray-100")}>
+          <Badge variant={isActive ? "success" : "secondary"} className="capitalize">
             {row.original.status}
           </Badge>
         );
@@ -220,10 +249,7 @@ export function ClientsContent() {
                 <Edit className="mr-2 h-4 w-4" /> Edit Client
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem className="text-red-600" onClick={() => {
-                setData((records) => records.filter((record) => record.id !== client.id));
-                toast.success("Client deleted");
-              }}>
+              <DropdownMenuItem className="text-red-600" onClick={() => setClientToDelete(client)}>
                 <Trash className="mr-2 h-4 w-4" /> Delete Client
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -286,7 +312,7 @@ export function ClientsContent() {
               onChange={(e) => setGlobalFilter(e.target.value)}
             />
           </div>
-          <Select onValueChange={(v) => table.getColumn('status')?.setFilterValue(v === 'all' ? '' : v)}>
+          <Select defaultValue="active" onValueChange={(v) => table.getColumn('status')?.setFilterValue(v === 'all' ? '' : v)}>
             <SelectTrigger className="w-[140px] bg-gray-50/50 border-gray-200">
               <SelectValue placeholder="Status" />
             </SelectTrigger>
@@ -349,8 +375,8 @@ export function ClientsContent() {
 
       {/* Content */}
       {view === 'table' ? (
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="overflow-x-auto">
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden flex flex-col min-h-[500px]">
+          <div className="overflow-x-auto flex-1">
             <Table>
               <TableHeader className="bg-gray-50/50">
                 {table.getHeaderGroups().map((headerGroup) => (
@@ -376,11 +402,14 @@ export function ClientsContent() {
                   ))
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={columns.length} className="h-48 text-center">
+                    <TableCell colSpan={columns.length} className="h-64 text-center">
                       <div className="flex flex-col items-center justify-center text-gray-500">
                         <Building2 className="h-10 w-10 text-gray-300 mb-3" />
                         <p className="text-base font-medium text-gray-900">No clients found</p>
-                        <p className="text-sm">We couldn&apos;t find any clients matching your criteria.</p>
+                        <p className="text-sm mb-4">We couldn&apos;t find any clients matching your criteria.</p>
+                        <Button size="sm" onClick={() => { setEditingClient(undefined); setIsFormOpen(true); }} className="bg-indigo-600 hover:bg-indigo-700">
+                          <Plus className="mr-2 h-4 w-4" /> Add Client
+                        </Button>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -422,7 +451,7 @@ export function ClientsContent() {
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 key={client.id}
-                className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 hover:shadow-md transition-shadow group relative"
+                className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 hover:shadow-md transition-shadow group relative flex flex-col h-full"
               >
                 <div className="absolute top-4 right-4">
                   <DropdownMenu>
@@ -459,7 +488,7 @@ export function ClientsContent() {
                     <div className="flex items-center gap-2 mt-1">
                       <span className="text-xs text-gray-500">{client.contactperson}</span>
                       <span className="w-1 h-1 rounded-full bg-gray-300" />
-                      <Badge variant="secondary" className={cn("text-[10px] px-1.5 py-0 capitalize", client.status === 'active' ? "bg-emerald-50 text-emerald-700" : "")}>
+                      <Badge variant={client.status === 'active' ? "success" : "secondary"} className="text-[10px] px-1.5 py-0 capitalize">
                         {client.status}
                       </Badge>
                     </div>
@@ -481,7 +510,7 @@ export function ClientsContent() {
                   </div>
                 </div>
 
-                <div className="pt-4 border-t border-gray-100 flex items-center justify-between">
+                <div className="pt-4 mt-auto border-t border-gray-100 flex items-center justify-between">
                   <div>
                     <p className="text-xs text-gray-500 mb-0.5">Revenue</p>
                     <p className="font-semibold text-gray-900">{formatCurrency(client.revenue || 0)}</p>
@@ -496,10 +525,13 @@ export function ClientsContent() {
             );
           })}
           {table.getRowModel().rows.length === 0 && (
-            <div className="col-span-full py-12 text-center bg-white rounded-2xl shadow-sm border border-gray-100">
-              <Building2 className="h-10 w-10 text-gray-300 mx-auto mb-3" />
-              <p className="text-base font-medium text-gray-900">No clients found</p>
-              <p className="text-sm text-gray-500">We couldn&apos;t find any clients matching your criteria.</p>
+            <div className="col-span-full py-16 text-center bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center">
+              <Building2 className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+              <p className="text-lg font-medium text-gray-900">No clients found</p>
+              <p className="text-sm text-gray-500 mb-6">We couldn&apos;t find any clients matching your criteria.</p>
+              <Button onClick={() => { setEditingClient(undefined); setIsFormOpen(true); }} className="bg-indigo-600 hover:bg-indigo-700">
+                <Plus className="mr-2 h-4 w-4" /> Add Client
+              </Button>
             </div>
           )}
         </div>
@@ -517,6 +549,33 @@ export function ClientsContent() {
           });
         }}
       />
+
+      {/* Delete Confirmation */}
+      <AlertDialog open={!!clientToDelete} onOpenChange={(open) => !open && setClientToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete the client record for <strong>{clientToDelete?.name}</strong> and remove all associated data from our servers.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+              onClick={() => {
+                if (clientToDelete) {
+                  setData((records) => records.filter((record) => record.id !== clientToDelete.id));
+                  toast.success("Client deleted successfully");
+                }
+                setClientToDelete(null);
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

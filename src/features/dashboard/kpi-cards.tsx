@@ -1,6 +1,6 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { motion, useReducedMotion, type Variants } from "framer-motion";
 import { Card, CardContent } from "@/components/ui/card";
 import { Building2, Package, TrendingUp, Trophy, IndianRupee, Target } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -12,8 +12,8 @@ const kpiData = [
     change: "+12%",
     changeType: "positive",
     icon: Building2,
-    color: "text-blue-600 dark:text-blue-400",
-    bgColor: "bg-blue-100 dark:bg-blue-900/20",
+    color: "text-primary",
+    bgColor: "bg-primary/10",
   },
   {
     title: "Total Products",
@@ -21,8 +21,8 @@ const kpiData = [
     change: "+5%",
     changeType: "positive",
     icon: Package,
-    color: "text-violet-600 dark:text-violet-400",
-    bgColor: "bg-violet-100 dark:bg-violet-900/20",
+    color: "text-secondary",
+    bgColor: "bg-secondary/10",
   },
   {
     title: "Open Enquiries",
@@ -30,8 +30,8 @@ const kpiData = [
     change: "-3%",
     changeType: "negative",
     icon: TrendingUp,
-    color: "text-amber-600 dark:text-amber-400",
-    bgColor: "bg-amber-100 dark:bg-amber-900/20",
+    color: "text-warning",
+    bgColor: "bg-warning/10",
   },
   {
     title: "Won Deals",
@@ -39,8 +39,8 @@ const kpiData = [
     change: "+25%",
     changeType: "positive",
     icon: Trophy,
-    color: "text-emerald-600 dark:text-emerald-400",
-    bgColor: "bg-emerald-100 dark:bg-emerald-900/20",
+    color: "text-success",
+    bgColor: "bg-success/10",
   },
   {
     title: "Monthly Revenue",
@@ -48,8 +48,8 @@ const kpiData = [
     change: "+18%",
     changeType: "positive",
     icon: IndianRupee,
-    color: "text-indigo-600 dark:text-indigo-400",
-    bgColor: "bg-indigo-100 dark:bg-indigo-900/20",
+    color: "text-primary",
+    bgColor: "bg-primary/10",
   },
   {
     title: "Conversion Rate",
@@ -57,27 +57,29 @@ const kpiData = [
     change: "+2.3%",
     changeType: "positive",
     icon: Target,
-    color: "text-rose-600 dark:text-rose-400",
-    bgColor: "bg-rose-100 dark:bg-rose-900/20",
+    color: "text-info",
+    bgColor: "bg-info/10",
   }
 ];
 
-const container = {
-  hidden: { opacity: 0 },
-  show: {
-    opacity: 1,
-    transition: {
-      staggerChildren: 0.1
-    }
-  }
-};
-
-const item = {
-  hidden: { opacity: 0, y: 20 },
-  show: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 24 } }
-};
-
 export function KpiCards() {
+  const shouldReduceMotion = useReducedMotion();
+
+  const container: Variants = {
+    hidden: { opacity: 0 },
+    show: {
+      opacity: 1,
+      transition: {
+        staggerChildren: shouldReduceMotion ? 0 : 0.1
+      }
+    }
+  };
+
+  const item: Variants = {
+    hidden: { opacity: 0, y: shouldReduceMotion ? 0 : 20 },
+    show: { opacity: 1, y: 0, transition: shouldReduceMotion ? { duration: 0 } : { type: "spring", stiffness: 300, damping: 24 } }
+  };
+
   return (
     <motion.div 
       variants={container}
@@ -97,7 +99,7 @@ export function KpiCards() {
                   </div>
                   <p className={cn(
                     "text-xs font-medium",
-                    kpi.changeType === 'positive' ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"
+                    kpi.changeType === 'positive' ? "text-success" : "text-destructive"
                   )}>
                     {kpi.change} <span className="text-muted-foreground font-normal">vs last month</span>
                   </p>

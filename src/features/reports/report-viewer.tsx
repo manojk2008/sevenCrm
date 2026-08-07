@@ -118,7 +118,7 @@ export function ReportViewer({ type }: ReportViewerProps) {
                 <RechartsTooltip 
                   cursor={{fill: 'hsl(var(--muted))', opacity: 0.2}}
                   contentStyle={{borderRadius: '8px', border: '1px solid hsl(var(--border))'}}
-                  formatter={(value: number) => formatCurrency(value)}
+                  formatter={(value) => formatCurrency(typeof value === 'number' ? value : Number(value ?? 0))}
                 />
                 <Bar dataKey="revenue" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
               </BarChart>
@@ -178,7 +178,7 @@ export function ReportViewer({ type }: ReportViewerProps) {
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                 <XAxis dataKey="name" />
                 <YAxis tickFormatter={(val) => `₹${val/100000}L`} />
-                <RechartsTooltip formatter={(val: number) => formatCurrency(val)} />
+                <RechartsTooltip formatter={(value) => formatCurrency(typeof value === 'number' ? value : Number(value ?? 0))}/>
                 <Area type="monotone" dataKey="revenue" stroke="hsl(var(--primary))" fillOpacity={1} fill="url(#colorRevenue)" />
               </AreaChart>
             </ResponsiveContainer>
@@ -198,7 +198,7 @@ export function ReportViewer({ type }: ReportViewerProps) {
                   <CartesianGrid strokeDasharray="3 3" horizontal={false} />
                   <XAxis type="number" tickFormatter={(val) => `₹${val/100000}L`} />
                   <YAxis dataKey="name" type="category" width={80} />
-                  <RechartsTooltip formatter={(val: number) => formatCurrency(val)} />
+                  <RechartsTooltip formatter={(value) => formatCurrency(typeof value === 'number' ? value : Number(value ?? 0))} />
                   <Bar dataKey="value" fill="hsl(var(--chart-2))" radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>
@@ -227,7 +227,7 @@ export function ReportViewer({ type }: ReportViewerProps) {
                       <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                     ))}
                   </Pie>
-                  <RechartsTooltip formatter={(val: number) => formatCurrency(val)} />
+                  <RechartsTooltip formatter={(value) => formatCurrency(typeof value === 'number' ? value : Number(value ?? 0))} />
                   <Legend />
                 </PieChart>
               </ResponsiveContainer>

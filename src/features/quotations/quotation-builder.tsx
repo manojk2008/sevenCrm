@@ -29,24 +29,24 @@ export function QuotationBuilder() {
   const router = useRouter();
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [client, setClient] = useState('');
-  
+
   const [items, setItems] = useState<LineItem[]>([
     { id: '1', product: 'Enterprise CRM License', description: 'Annual subscription per user', qty: 10, unitPrice: 25000, discount: 0, tax: 18 }
   ]);
 
-  const updateItem = (id: string, field: keyof LineItem, value: any) => {
+  const updateItem = <K extends keyof LineItem>(id: string, field: K, value: LineItem[K]) => {
     setItems(items.map(i => i.id === id ? { ...i, [field]: value } : i));
   };
 
   const addItem = () => {
-    setItems([...items, { 
-      id: Math.random().toString(), 
-      product: '', 
-      description: '', 
-      qty: 1, 
-      unitPrice: 0, 
-      discount: 0, 
-      tax: 18 
+    setItems([...items, {
+      id: Math.random().toString(),
+      product: '',
+      description: '',
+      qty: 1,
+      unitPrice: 0,
+      discount: 0,
+      tax: 18
     }]);
   };
 
@@ -68,11 +68,17 @@ export function QuotationBuilder() {
     const afterDiscount = (item.qty * item.unitPrice) - ((item.qty * item.unitPrice) * (item.discount / 100));
     return sum + (afterDiscount * (item.tax / 100));
   }, 0);
-  
+
   // Assuming intra-state for demo (CGST + SGST split)
   const cgst = totalTax / 2;
   const sgst = totalTax / 2;
   const grandTotal = taxableAmount + totalTax;
+
+
+  const [today] = useState(() => new Date().toISOString().split('T')[0]);
+  const [validUntilDefault] = useState(() =>
+    new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+  );
 
   return (
     <div className="pb-24 max-w-5xl mx-auto space-y-8 p-6">
@@ -87,7 +93,7 @@ export function QuotationBuilder() {
       </div>
 
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-        
+
         {/* Header Section */}
         <Card className="p-8 rounded-2xl shadow-sm border-slate-200 dark:border-slate-800">
           <div className="flex flex-col md:flex-row justify-between gap-8">
@@ -111,7 +117,7 @@ export function QuotationBuilder() {
                 </div>
                 <div className="flex-1">
                   <Label className="text-slate-500">Valid Until</Label>
-                  <Input type="date" defaultValue={new Date(Date.now() + 15*24*60*60*1000).toISOString().split('T')[0]} className="rounded-xl" />
+                  <Input type="date" defaultValue={validUntilDefault} className="rounded-xl"  />
                 </div>
               </div>
             </div>
@@ -120,7 +126,7 @@ export function QuotationBuilder() {
           <div className="mt-8 pt-8 border-t border-slate-200 dark:border-slate-800">
             <Label className="text-lg font-semibold mb-4 block">Bill To</Label>
             <div className="max-w-md">
-              <Select value={client} onValueChange={setClient}>
+              <Select value={client} onValueChange={(value) => setClient(value ?? '')}>
                 <SelectTrigger className="rounded-xl h-12">
                   <SelectValue placeholder="Select Client" />
                 </SelectTrigger>
@@ -129,7 +135,7 @@ export function QuotationBuilder() {
                   <SelectItem value="client2">Global Services Inc.</SelectItem>
                 </SelectContent>
               </Select>
-              
+
               {client && (
                 <div className="mt-4 p-4 bg-slate-50 dark:bg-slate-900 rounded-xl space-y-1 text-sm">
                   <p className="font-bold">Tech Innovations Ltd.</p>
@@ -146,7 +152,7 @@ export function QuotationBuilder() {
         {/* Line Items */}
         <Card className="p-8 rounded-2xl shadow-sm border-slate-200 dark:border-slate-800">
           <h3 className="text-lg font-semibold mb-4">Line Items</h3>
-          
+
           <div className="overflow-x-auto">
             <table className="w-full text-sm mb-4">
               <thead className="text-slate-500 border-b border-slate-200 dark:border-slate-800">
@@ -170,45 +176,45 @@ export function QuotationBuilder() {
                       </div>
                     </td>
                     <td className="py-4 pr-4">
-                      <Input 
-                        value={item.product} 
+                      <Input
+                        value={item.product}
                         onChange={(e) => updateItem(item.id, 'product', e.target.value)}
-                        placeholder="Product Name" 
-                        className="font-medium rounded-lg mb-2" 
+                        placeholder="Product Name"
+                        className="font-medium rounded-lg mb-2"
                       />
-                      <Textarea 
+                      <Textarea
                         value={item.description}
                         onChange={(e) => updateItem(item.id, 'description', e.target.value)}
-                        placeholder="Description (Optional)" 
-                        className="text-xs resize-none rounded-lg" 
+                        placeholder="Description (Optional)"
+                        className="text-xs resize-none rounded-lg"
                         rows={2}
                       />
                     </td>
                     <td className="py-4 px-2 align-top">
-                      <Input 
-                        type="number" 
+                      <Input
+                        type="number"
                         value={item.qty}
                         onChange={(e) => updateItem(item.id, 'qty', Number(e.target.value))}
-                        className="text-center rounded-lg" 
-                        min={1} 
+                        className="text-center rounded-lg"
+                        min={1}
                       />
                     </td>
                     <td className="py-4 px-2 align-top">
-                      <Input 
-                        type="number" 
+                      <Input
+                        type="number"
                         value={item.unitPrice}
                         onChange={(e) => updateItem(item.id, 'unitPrice', Number(e.target.value))}
-                        className="text-right rounded-lg" 
-                        min={0} 
+                        className="text-right rounded-lg"
+                        min={0}
                       />
                     </td>
                     <td className="py-4 px-2 align-top">
-                      <Input 
-                        type="number" 
+                      <Input
+                        type="number"
                         value={item.discount}
                         onChange={(e) => updateItem(item.id, 'discount', Number(e.target.value))}
-                        className="text-right rounded-lg" 
-                        min={0} max={100} 
+                        className="text-right rounded-lg"
+                        min={0} max={100}
                       />
                     </td>
                     <td className="py-4 px-2 align-top">
@@ -238,11 +244,11 @@ export function QuotationBuilder() {
               </tbody>
             </table>
           </div>
-          
+
           <Button variant="outline" onClick={addItem} className="rounded-xl border-dashed">
             <Plus className="w-4 h-4 mr-2" /> Add Row
           </Button>
-          
+
           {/* Totals Section */}
           <div className="flex justify-end mt-8 pt-8 border-t border-slate-200 dark:border-slate-800">
             <div className="w-full max-w-md space-y-3 text-sm">
@@ -284,12 +290,12 @@ export function QuotationBuilder() {
           </div>
           <div>
             <Label className="mb-2 block">Terms & Conditions</Label>
-            <Textarea 
+            <Textarea
               className="rounded-xl text-sm text-slate-500 resize-none h-32"
               defaultValue={`1. Payment terms: 50% advance, balance on delivery.
 2. Quotation valid for 15 days from the date of issue.
 3. Any additional requirements will be billed separately.
-4. Annual maintenance charges are subject to revision.`} 
+4. Annual maintenance charges are subject to revision.`}
             />
           </div>
         </Card>
@@ -313,8 +319,8 @@ export function QuotationBuilder() {
       </div>
 
       {/* Preview Dialog */}
-      <QuotationPreview 
-        open={isPreviewOpen} 
+      <QuotationPreview
+        open={isPreviewOpen}
         onOpenChange={setIsPreviewOpen}
         data={{ items, subtotal, totalDiscount, taxableAmount, cgst, sgst, grandTotal }}
       />

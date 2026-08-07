@@ -61,35 +61,35 @@ export function KanbanBoard({ enquiries, setEnquiries, onCardClick }: KanbanBoar
 
     // Dropping a Task over another Task
     if (isActiveTask && isOverTask) {
-      setEnquiries((tasks) => {
-        const activeIndex = tasks.findIndex((t) => t.id === activeId);
-        const overIndex = tasks.findIndex((t) => t.id === overId);
+      const activeIndex = enquiries.findIndex((t) => t.id === activeId);
+      const overIndex = enquiries.findIndex((t) => t.id === overId);
+      if (activeIndex === -1 || overIndex === -1) return;
 
-        const activeTask = tasks[activeIndex];
-        const overTask = tasks[overIndex];
+      const activeTask = enquiries[activeIndex];
+      const overTask = enquiries[overIndex];
 
-        if (activeTask.stage !== overTask.stage) {
-          activeTask.stage = overTask.stage;
-          return arrayMove(tasks, activeIndex, overIndex);
-        }
+      const updated =
+        activeTask.stage !== overTask.stage
+          ? enquiries.map((t) => (t.id === activeId ? { ...t, stage: overTask.stage } : t))
+          : enquiries;
 
-        return arrayMove(tasks, activeIndex, overIndex);
-      });
+      setEnquiries(arrayMove(updated, activeIndex, overIndex));
     }
 
     // Dropping a Task over a Column
     if (isActiveTask && isOverColumn) {
-      setEnquiries((tasks) => {
-        const activeIndex = tasks.findIndex((t) => t.id === activeId);
-        const activeTask = tasks[activeIndex];
-        const newStage = overId as Enquiry["stage"];
-        
-        if (activeTask.stage !== newStage) {
-          activeTask.stage = newStage;
-          return arrayMove(tasks, activeIndex, activeIndex);
-        }
-        return tasks;
-      });
+      const activeIndex = enquiries.findIndex((t) => t.id === activeId);
+      if (activeIndex === -1) return;
+
+      const activeTask = enquiries[activeIndex];
+      const newStage = overId as Enquiry["stage"];
+
+      if (activeTask.stage !== newStage) {
+        const updated = enquiries.map((t) =>
+          t.id === activeId ? { ...t, stage: newStage } : t
+        );
+        setEnquiries(updated);
+      }
     }
   };
 
@@ -104,14 +104,16 @@ export function KanbanBoard({ enquiries, setEnquiries, onCardClick }: KanbanBoar
     if (activeId === overId) return;
 
     // Final sorting if within the same column
-    setEnquiries((tasks) => {
-      const activeIndex = tasks.findIndex((t) => t.id === activeId);
-      const overIndex = tasks.findIndex((t) => t.id === overId);
-      if (activeIndex !== -1 && overIndex !== -1 && tasks[activeIndex].stage === tasks[overIndex].stage) {
-         return arrayMove(tasks, activeIndex, overIndex);
-      }
-      return tasks;
-    });
+    const activeIndex = enquiries.findIndex((t) => t.id === activeId);
+    const overIndex = enquiries.findIndex((t) => t.id === overId);
+
+    if (
+      activeIndex !== -1 &&
+      overIndex !== -1 &&
+      enquiries[activeIndex].stage === enquiries[overIndex].stage
+    ) {
+      setEnquiries(arrayMove(enquiries, activeIndex, overIndex));
+    }
   };
 
   return (

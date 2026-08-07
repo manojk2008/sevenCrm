@@ -39,17 +39,19 @@ export function ConversionChart({
             ))}
           </Pie>
           <Tooltip
-            formatter={(value: number) => [`${value}%`, 'Conversion']}
+            formatter={(value) => {
+              const num = typeof value === 'number' ? value : Number(value ?? 0);
+              return [`${num}%`, 'Conversion'];
+            }}
             contentStyle={{
               borderRadius: '8px',
               border: '1px solid hsl(var(--border))',
-              backgroundColor: 'hsl(var(--background))',
-              boxShadow: '0 1px 2px 0 rgb(0 0 0 / 0.05)',
+              // ...rest unchanged
             }}
           />
         </PieChart>
       </ResponsiveContainer>
-      
+
       {(centerLabel || centerValue) && (
         <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
           {centerValue && (

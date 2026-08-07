@@ -15,9 +15,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-
-const formatCurrency = (amount: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(amount);
-const getInitials = (name: string) => name.substring(0, 2).toUpperCase();
+import { formatCurrency, getInitials } from '@/lib/format';
 
 export function ClientDetailContent({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);

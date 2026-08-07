@@ -196,6 +196,10 @@
   * {
     @apply border-border outline-ring/50;
   }
+  *:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
   body {
     @apply bg-background text-foreground;
     font-feature-settings: "cv11", "ss01";

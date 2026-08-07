@@ -11,7 +11,7 @@ import {
   getSortedRowModel, getFilteredRowModel, flexRender,
   createColumnHelper
 } from '@tanstack/react-table';
-
+import { Product } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -19,24 +19,23 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { ProductForm } from './product-form';
 import { formatCurrency } from '@/lib/format';
 
-type Product = {
-  id: string;
-  name: string;
-  category: string;
-  price: number;
-  stock: number;
-  status: 'Active' | 'Inactive';
-  gstRate: number;
-};
+
 
 const mockProducts: Product[] = Array.from({ length: 30 }).map((_, i) => ({
   id: `PRD-${String(i + 1).padStart(3, '0')}`,
   name: `Enterprise Software License ${i + 1}`,
+  description: `Comprehensive enterprise solution ${i + 1}.`,
   category: i % 2 === 0 ? 'Software' : 'Service',
   price: Math.floor(Math.random() * 50000) + 5000,
   stock: Math.floor(Math.random() * 500),
-  status: i % 5 === 0 ? 'Inactive' : 'Active',
-  gstRate: 18
+  unit: 'Per License',
+  sku: `SKU-${String(i + 1).padStart(4, '0')}`,
+  status: i % 5 === 0 ? 'inactive' : 'active',
+  gstRate: 18,
+  images: [],
+  specifications: [],
+  createdAt: new Date(Date.now() - i * 86400000).toISOString(),
+  updatedAt: new Date().toISOString(),
 }));
 
 const columnHelper = createColumnHelper<Product>();
@@ -67,7 +66,7 @@ export function ProductsContent() {
     columnHelper.accessor('status', {
       header: 'Status',
       cell: info => (
-        <Badge variant={info.getValue() === 'Active' ? 'default' : 'destructive'} className={info.getValue() === 'Active' ? 'bg-emerald-500 hover:bg-emerald-600' : ''}>
+        <Badge variant={info.getValue() === 'active' ? 'default' : 'destructive'} className={info.getValue() === 'active' ? 'bg-emerald-500 hover:bg-emerald-600' : ''}>
           {info.getValue()}
         </Badge>
       )
@@ -229,8 +228,8 @@ export function ProductsContent() {
                 <div className="h-40 bg-slate-100 dark:bg-slate-800 flex items-center justify-center p-6 relative">
                   <Badge variant="secondary" className="absolute top-4 left-4">{row.original.category}</Badge>
                   <Badge 
-                    variant={row.original.status === 'Active' ? 'default' : 'destructive'} 
-                    className={`absolute top-4 right-4 ${row.original.status === 'Active' ? 'bg-emerald-500' : ''}`}
+                    variant={row.original.status === 'active' ? 'default' : 'destructive'} 
+                    className={`absolute top-4 right-4 ${row.original.status === 'active' ? 'bg-emerald-500' : ''}`}
                   >
                     {row.original.status}
                   </Badge>

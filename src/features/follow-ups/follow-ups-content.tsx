@@ -46,7 +46,7 @@ const generateMockData = (): FollowUp[] => {
     
     const types: FollowUpType[] = ['Call', 'Email', 'Meeting', 'Demo', 'Visit'];
     const priorities: Priority[] = ['Low', 'Medium', 'High', 'Urgent'];
-    const statuses: Status[] = daysOffset < 0 ? (Math.random() > 0.3 ? 'Completed' : 'Pending') : 'Pending';
+    const status: Status = daysOffset < 0 ? (Math.random() > 0.3 ? 'Completed' : 'Pending') : 'Pending';
 
     data.push({
       id: `FU-${Math.floor(Math.random() * 10000)}`,
@@ -55,7 +55,7 @@ const generateMockData = (): FollowUp[] => {
       type: types[Math.floor(Math.random() * types.length)],
       date,
       priority: priorities[Math.floor(Math.random() * priorities.length)],
-      status: statuses as Status,
+      status: status as Status,
       executive: 'John Doe',
     });
   }

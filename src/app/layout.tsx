@@ -33,8 +33,11 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <body className="min-h-screen bg-background font-sans antialiased">
+        <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:p-4 focus:bg-background focus:text-foreground">
+          Skip to content
+        </a>
         <ThemeProvider>
-          <TooltipProvider delayDuration={300}>
+          <TooltipProvider delay={300}>
             {children}
             <Toaster
               position="bottom-right"

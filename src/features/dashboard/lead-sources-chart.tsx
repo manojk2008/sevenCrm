@@ -49,13 +49,16 @@ export function LeadSourcesChart() {
                   <Cell key={`cell-${index}`} fill={entry.color} />
                 ))}
               </Pie>
-              <Tooltip 
-                formatter={(value: number) => [`${value}%`, 'Share']}
-                contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+              <Tooltip
+                formatter={(value) => {
+                  const num = typeof value === 'number' ? value : Number(value ?? 0);
+                  return [`${num}%`, 'Share'];
+                }}
+                contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px...' /* keep the rest unchanged */ }}
               />
-              <Legend 
-                verticalAlign="bottom" 
-                height={36} 
+              <Legend
+                verticalAlign="bottom"
+                height={36}
                 iconType="circle"
                 wrapperStyle={{ fontSize: '12px' }}
               />

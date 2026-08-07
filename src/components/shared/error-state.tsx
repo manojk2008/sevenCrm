@@ -4,7 +4,7 @@ import { AlertCircle, RefreshCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
-interface ErrorStateProps extends React.HTMLAttributes<HTMLDivElement> {
+interface ErrorStateProps extends Omit<React.HTMLAttributes<HTMLDivElement>, "onDrag" | "onDragStart" | "onDragEnd" | "onAnimationStart" | "onAnimationEnd" | "onAnimationIteration"> {
   title?: string;
   description?: string;
   onRetry?: () => void;

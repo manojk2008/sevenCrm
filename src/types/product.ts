@@ -40,6 +40,7 @@ export const PRODUCT_CATEGORIES = [
   "AI & ML Services",
 ] as const;
 
+
 export const PRODUCT_UNITS = [
   "Per License",
   "Per User",

@@ -1,7 +1,8 @@
 "use client";
-
+import { useState } from 'react';
 import { useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { Product } from '@/types';
 import * as z from 'zod';
 import { toast } from 'sonner';
 import { Plus, Trash2 } from 'lucide-react';
@@ -55,15 +56,16 @@ type ProductFormValues = z.infer<typeof productSchema>;
 interface ProductFormProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  product?: any | null;
+  product?: Product  | null;
 }
 
 export function ProductForm({ open, onOpenChange, product }: ProductFormProps) {
-  const form = useForm<ProductFormValues>({
+  const [generatedSku] = useState(() => `SKU-${Math.floor(Math.random() * 10000)}`);
+  const form = useForm({
     resolver: zodResolver(productSchema),
     defaultValues: product ? {
       ...product,
-      status: product.status === 'Active',
+      status: product.status === 'active',
       gstRate: product.gstRate.toString(),
       specifications: []
     } : {
@@ -73,7 +75,7 @@ export function ProductForm({ open, onOpenChange, product }: ProductFormProps) {
       price: 0,
       stock: 0,
       unit: 'Per License',
-      sku: `SKU-${Math.floor(Math.random() * 10000)}`,
+      sku: generatedSku,
       hsnCode: '',
       gstRate: '18',
       status: true,
@@ -314,7 +316,7 @@ export function ProductForm({ open, onOpenChange, product }: ProductFormProps) {
               ))}
               {fields.length === 0 && (
                 <p className="text-sm text-slate-500 text-center py-4 bg-slate-50 dark:bg-slate-900 rounded-xl border border-dashed border-slate-200 dark:border-slate-800">
-                  No specifications added. Click 'Add Row' to define product details.
+                  No specifications added. Click &apos;Add Row&apos; to define product details.
                 </p>
               )}
             </div>

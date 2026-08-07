@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   LayoutDashboard,
   Building2,
@@ -19,10 +19,8 @@ import {
   LineChart,
   Users,
   Settings,
-  Bell,
   ChevronLeft,
   ChevronRight,
-  LogOut,
 } from "lucide-react";
 
 const NAV_SECTIONS = [
@@ -68,7 +66,7 @@ export default function Sidebar() {
   const pathname = usePathname();
 
   return (
-    <TooltipProvider delayDuration={0}>
+    <>
       <motion.aside
         initial={false}
         animate={{ width: isCollapsed ? 72 : 280 }}
@@ -146,7 +144,7 @@ export default function Sidebar() {
 
                   return isCollapsed ? (
                     <Tooltip key={item.label}>
-                      <TooltipTrigger asChild>{navItem}</TooltipTrigger>
+                      <TooltipTrigger render={navItem} />
                       <TooltipContent side="right" className="flex items-center gap-2">
                         {item.label}
                         {item.badge && (
@@ -170,7 +168,7 @@ export default function Sidebar() {
               {user?.name ? user.name.substring(0, 2).toUpperCase() : "JD"}
             </div>
             {!isCollapsed && (
-              <div className="flex flex-1 flex-col overflow-hidden">
+              <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
                 <span className="truncate text-sm font-medium leading-none">
                   {user?.name || "John Doe"}
                 </span>
@@ -185,7 +183,8 @@ export default function Sidebar() {
         {/* Collapse Toggle */}
         <button
           onClick={toggle}
-          className="absolute -right-3 top-20 flex h-6 w-6 items-center justify-center rounded-full border bg-background shadow-sm hover:bg-accent hover:text-accent-foreground z-50 transition-transform"
+          className="absolute -right-5 top-20 flex h-10 w-10 items-center justify-center rounded-full border bg-background shadow-sm hover:bg-accent hover:text-accent-foreground z-50 transition-transform"
+          aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
         >
           {isCollapsed ? (
             <ChevronRight className="h-4 w-4" />
@@ -194,6 +193,6 @@ export default function Sidebar() {
           )}
         </button>
       </motion.aside>
-    </TooltipProvider>
+    </>
   );
 }

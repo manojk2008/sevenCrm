@@ -65,13 +65,17 @@ export function formatPercentage(value: number, decimals: number = 1): string {
 }
 
 /**
- * Get initials from a full name (e.g., 'John Doe' -> 'JD')
+ * Get initials from a full name (e.g., 'Google Cloud' -> 'GC', 'John' -> 'JO')
  */
 export function getInitials(name: string): string {
-  const parts = name.trim().split(/\s+/);
+  const parts = name.trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) return '';
   if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase();
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  return parts
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join('')
+    .toUpperCase();
 }
 
 /**

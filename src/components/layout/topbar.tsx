@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import { useTheme } from "next-themes";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/stores/auth-store";
@@ -24,6 +25,12 @@ export default function Topbar() {
   const { user, logout } = useAuthStore();
   const { unreadCount } = useNotificationStore();
   const { open } = useCommandPaletteStore();
+  const [modifierKey, setModifierKey] = React.useState("⌘");
+
+  React.useEffect(() => {
+    const isMac = /Mac|iPhone|iPad|iPod/i.test(navigator.platform);
+    queueMicrotask(() => setModifierKey(isMac ? String.fromCharCode(0x2318) : "Ctrl"));
+  }, []);
 
   return (
     <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center gap-4 border-b bg-background/80 px-4 backdrop-blur-md sm:px-6">
@@ -47,7 +54,9 @@ export default function Topbar() {
           <Search className="mr-2 h-4 w-4" />
           <span>Search...</span>
           <kbd className="pointer-events-none absolute right-1.5 top-1.5 hidden h-6 select-none items-center gap-1 rounded border bg-background px-1.5 font-mono text-[10px] font-medium opacity-100 sm:flex">
-            <span className="text-xs">⌘</span>K
+            <span className="text-xs">
+              {modifierKey === "Ctrl" ? "Ctrl" : String.fromCharCode(0x2318)}
+            </span>K
           </kbd>
         </Button>
 
@@ -65,6 +74,9 @@ export default function Topbar() {
         {/* Notifications */}
         <Button variant="ghost" size="icon" className="relative">
           <Bell className="h-5 w-5" />
+          <span className="sr-only">
+            You have {unreadCount} unread notification{unreadCount === 1 ? "" : "s"}
+          </span>
           {unreadCount > 0 && (
             <span className="absolute right-1 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[10px] font-medium text-destructive-foreground">
               {unreadCount > 99 ? '99+' : unreadCount}
@@ -76,7 +88,7 @@ export default function Topbar() {
         <DropdownMenu>
           <DropdownMenuTrigger
             render={
-              <Button variant="ghost" className="relative h-9 w-9 rounded-full">
+              <Button variant="ghost" className="relative h-9 w-9 rounded-full" aria-label="User menu">
                 <div className="flex h-9 w-5 items-center justify-center rounded-full bg-primary/10 text-sm font-medium text-primary">
                   {user?.name ? user.name.substring(0, 2).toUpperCase() : "JD"}
                 </div>
