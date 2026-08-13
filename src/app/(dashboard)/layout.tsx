@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Sidebar from "@/components/layout/sidebar";
 import Topbar from "@/components/layout/topbar";
@@ -14,12 +14,32 @@ export default function DashboardLayout({
 }) {
   const router = useRouter();
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  const hydrate = useAuthStore((state) => state.hydrate);
+  // Zustand's auth state is in-memory only, so a fresh page load always
+  // starts as unauthenticated even when a valid Better Auth session cookie
+  // still exists. Check the real backend session once before deciding to
+  // redirect, instead of trusting stale client state.
+  const [sessionChecked, setSessionChecked] = useState(false);
 
   useEffect(() => {
-    if (!isAuthenticated) router.replace("/login");
-  }, [isAuthenticated, router]);
+    if (isAuthenticated) {
+      setSessionChecked(true);
+      return;
+    }
+    let cancelled = false;
+    hydrate().finally(() => {
+      if (!cancelled) setSessionChecked(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, hydrate]);
 
-  if (!isAuthenticated) return null;
+  useEffect(() => {
+    if (sessionChecked && !isAuthenticated) router.replace("/login");
+  }, [sessionChecked, isAuthenticated, router]);
+
+  if (!sessionChecked || !isAuthenticated) return null;
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">

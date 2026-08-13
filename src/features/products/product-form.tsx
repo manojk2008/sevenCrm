@@ -6,14 +6,6 @@ import { Product } from '@/types';
 import * as z from 'zod';
 import { toast } from 'sonner';
 import { Plus, Trash2 } from 'lucide-react';
-
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -33,6 +25,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 const productSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters'),
@@ -56,7 +49,7 @@ type ProductFormValues = z.infer<typeof productSchema>;
 interface ProductFormProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  product?: Product  | null;
+  product?: Product | null;
 }
 
 export function ProductForm({ open, onOpenChange, product }: ProductFormProps) {
@@ -94,197 +87,179 @@ export function ProductForm({ open, onOpenChange, product }: ProductFormProps) {
   };
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="sm:max-w-xl w-full overflow-y-auto">
-        <SheetHeader className="mb-6">
-          <SheetTitle>{product ? 'Edit Product' : 'Add New Product'}</SheetTitle>
-          <SheetDescription>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[90vh] w-full overflow-y-auto sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>{product ? 'Edit product' : 'Add product'}</DialogTitle>
+          <DialogDescription>
             {product ? 'Make changes to your product here.' : 'Add a new product to your catalog.'}
-          </SheetDescription>
-        </SheetHeader>
+          </DialogDescription>
+        </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <FormField
-                control={form.control}
-                name="name"
-                render={({ field }) => (
-                  <FormItem className="col-span-1 md:col-span-2">
-                    <FormLabel>Product Name *</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Enterprise Software License" {...field} className="rounded-xl" />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="category"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Category *</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+          <form onSubmit={form.handleSubmit(onSubmit)} style={{ padding: '20px 24px' }}>
+            <section className="space-y-4">
+              <h3 className="text-sm font-semibold">Product details</h3>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+                <FormField
+                  control={form.control}
+                  name="name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Product name *</FormLabel>
                       <FormControl>
-                        <SelectTrigger className="rounded-xl">
-                          <SelectValue placeholder="Select category" />
-                        </SelectTrigger>
+                        <Input placeholder="Enterprise Software License" {...field} />
                       </FormControl>
-                      <SelectContent>
-                        <SelectItem value="Software">Software</SelectItem>
-                        <SelectItem value="Service">Service</SelectItem>
-                        <SelectItem value="Hardware">Hardware</SelectItem>
-                        <SelectItem value="Subscription">Subscription</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
-              <FormField
-                control={form.control}
-                name="unit"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Unit *</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                <FormField
+                  control={form.control}
+                  name="category"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Category *</FormLabel>
+                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select category" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="Software">Software</SelectItem>
+                          <SelectItem value="Service">Service</SelectItem>
+                          <SelectItem value="Hardware">Hardware</SelectItem>
+                          <SelectItem value="Subscription">Subscription</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="unit"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Unit *</FormLabel>
+                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select unit" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="Per License">Per License</SelectItem>
+                          <SelectItem value="Per User">Per User</SelectItem>
+                          <SelectItem value="Per Month">Per Month</SelectItem>
+                          <SelectItem value="Per Year">Per Year</SelectItem>
+                          <SelectItem value="One-time">One-time</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="price"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Price (₹) *</FormLabel>
                       <FormControl>
-                        <SelectTrigger className="rounded-xl">
-                          <SelectValue placeholder="Select unit" />
-                        </SelectTrigger>
+                        <Input type="number" placeholder="0.00" {...field} />
                       </FormControl>
-                      <SelectContent>
-                        <SelectItem value="Per License">Per License</SelectItem>
-                        <SelectItem value="Per User">Per User</SelectItem>
-                        <SelectItem value="Per Month">Per Month</SelectItem>
-                        <SelectItem value="Per Year">Per Year</SelectItem>
-                        <SelectItem value="One-time">One-time</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
-              <FormField
-                control={form.control}
-                name="price"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Price (₹) *</FormLabel>
-                    <FormControl>
-                      <Input type="number" placeholder="0.00" {...field} className="rounded-xl" />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="stock"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Stock *</FormLabel>
-                    <FormControl>
-                      <Input type="number" placeholder="0" {...field} className="rounded-xl" />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              
-              <FormField
-                control={form.control}
-                name="gstRate"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>GST Rate *</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                <FormField
+                  control={form.control}
+                  name="stock"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Stock *</FormLabel>
                       <FormControl>
-                        <SelectTrigger className="rounded-xl">
-                          <SelectValue placeholder="Select GST" />
-                        </SelectTrigger>
+                        <Input type="number" placeholder="0" {...field} />
                       </FormControl>
-                      <SelectContent>
-                        <SelectItem value="0">0%</SelectItem>
-                        <SelectItem value="5">5%</SelectItem>
-                        <SelectItem value="12">12%</SelectItem>
-                        <SelectItem value="18">18%</SelectItem>
-                        <SelectItem value="28">28%</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
-              <FormField
-                control={form.control}
-                name="sku"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>SKU</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Auto-generated" {...field} className="rounded-xl" />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                <FormField
+                  control={form.control}
+                  name="gstRate"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>GST rate *</FormLabel>
+                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select GST" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="0">0%</SelectItem>
+                          <SelectItem value="5">5%</SelectItem>
+                          <SelectItem value="12">12%</SelectItem>
+                          <SelectItem value="18">18%</SelectItem>
+                          <SelectItem value="28">28%</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
-              <FormField
-                control={form.control}
-                name="description"
-                render={({ field }) => (
-                  <FormItem className="col-span-1 md:col-span-2">
-                    <FormLabel>Description</FormLabel>
-                    <FormControl>
-                      <Textarea 
-                        placeholder="Detailed product description..." 
-                        className="resize-none rounded-xl" 
-                        rows={3}
-                        {...field} 
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              
-              <FormField
-                control={form.control}
-                name="status"
-                render={({ field }) => (
-                  <FormItem className="flex flex-row items-center justify-between rounded-xl border border-slate-200 dark:border-slate-800 p-4 col-span-1 md:col-span-2">
-                    <div className="space-y-0.5">
-                      <FormLabel className="text-base">Active Status</FormLabel>
-                      <div className="text-sm text-slate-500">
-                        {field.value ? 'Product is visible and available for sale.' : 'Product is hidden.'}
-                      </div>
-                    </div>
-                    <FormControl>
-                      <Switch
-                        checked={field.value}
-                        onCheckedChange={field.onChange}
-                      />
-                    </FormControl>
-                  </FormItem>
-                )}
-              />
-            </div>
+                <FormField
+                  control={form.control}
+                  name="sku"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>SKU</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Auto-generated" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
-            <div className="space-y-4 pt-4 border-t border-slate-200 dark:border-slate-800">
+                <FormField
+                  control={form.control}
+                  name="description"
+                  render={({ field }) => (
+                    <FormItem className="sm:col-span-2">
+                      <FormLabel>Description</FormLabel>
+                      <FormControl>
+                        <Textarea
+                          placeholder="Detailed product description..."
+                          className="resize-none"
+                          rows={3}
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+            </section>
+
+            <section className="space-y-4 border-t pt-6">
               <div className="flex items-center justify-between">
-                <h4 className="font-medium text-sm">Specifications</h4>
-                <Button type="button" variant="outline" size="sm" onClick={() => append({ key: '', value: '' })} className="rounded-xl h-8">
-                  <Plus className="mr-2 h-3.5 w-3.5" /> Add Row
+                <h3 className="text-sm font-semibold">Specifications</h3>
+                <Button type="button" variant="outline" size="sm" onClick={() => append({ key: '', value: '' })}>
+                  <Plus className="mr-2 h-3.5 w-3.5" /> Add row
                 </Button>
               </div>
-              
+
               {fields.map((field, index) => (
                 <div key={field.id} className="flex gap-2 items-start">
                   <FormField
@@ -293,7 +268,7 @@ export function ProductForm({ open, onOpenChange, product }: ProductFormProps) {
                     render={({ field }) => (
                       <FormItem className="flex-1">
                         <FormControl>
-                          <Input placeholder="e.g. Memory" {...field} className="rounded-xl" />
+                          <Input placeholder="e.g. Memory" {...field} />
                         </FormControl>
                       </FormItem>
                     )}
@@ -304,7 +279,7 @@ export function ProductForm({ open, onOpenChange, product }: ProductFormProps) {
                     render={({ field }) => (
                       <FormItem className="flex-1">
                         <FormControl>
-                          <Input placeholder="e.g. 16GB" {...field} className="rounded-xl" />
+                          <Input placeholder="e.g. 16GB" {...field} />
                         </FormControl>
                       </FormItem>
                     )}
@@ -315,23 +290,35 @@ export function ProductForm({ open, onOpenChange, product }: ProductFormProps) {
                 </div>
               ))}
               {fields.length === 0 && (
-                <p className="text-sm text-slate-500 text-center py-4 bg-slate-50 dark:bg-slate-900 rounded-xl border border-dashed border-slate-200 dark:border-slate-800">
-                  No specifications added. Click &apos;Add Row&apos; to define product details.
+                <p className="text-sm text-muted-foreground text-center py-4 bg-muted/40 rounded-lg border border-dashed">
+                  No specifications added. Click &apos;Add row&apos; to define product details.
                 </p>
               )}
+            </section>
+
+            <div className="flex items-center justify-between rounded-lg border p-4 mt-6">
+              <div>
+                <FormLabel className="text-base">Active status</FormLabel>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {form.watch('status') ? 'Product is visible and available for sale.' : 'Product is hidden.'}
+                </p>
+              </div>
+              <FormField
+                control={form.control}
+                name="status"
+                render={({ field }) => (
+                  <Switch checked={field.value} onCheckedChange={field.onChange} />
+                )}
+              />
             </div>
 
-            <div className="pt-6 border-t border-slate-200 dark:border-slate-800 flex justify-end gap-2">
-              <Button type="button" variant="outline" onClick={() => onOpenChange(false)} className="rounded-xl">
-                Cancel
-              </Button>
-              <Button type="submit" className="rounded-xl">
-                {product ? 'Save Changes' : 'Create Product'}
-              </Button>
-            </div>
+            <DialogFooter className="sticky bottom-0 border-t bg-background py-4 mt-6">
+              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+              <Button type="submit">{product ? 'Save changes' : 'Create product'}</Button>
+            </DialogFooter>
           </form>
         </Form>
-      </SheetContent>
-    </Sheet>
+      </DialogContent>
+    </Dialog>
   );
 }

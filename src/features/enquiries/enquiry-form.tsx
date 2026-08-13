@@ -1,10 +1,21 @@
 "use client";
 
-import { useState } from "react";
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from "@/components/ui/sheet";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { ENQUIRY_SOURCES } from "@/types/enquiry";
-// Will use react-hook-form in production
+
+// Will use react-hook-form in production — this is still a visual-only
+// pass; no state, validation, or submit handler is wired up yet (QA-007).
 
 interface EnquiryFormProps {
   open: boolean;
@@ -13,74 +24,99 @@ interface EnquiryFormProps {
 
 export function EnquiryForm({ open, onOpenChange }: EnquiryFormProps) {
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="sm:max-w-md w-full flex flex-col h-full bg-white dark:bg-slate-950">
-        <SheetHeader className="pb-4 border-b">
-          <SheetTitle>Create New Enquiry</SheetTitle>
-        </SheetHeader>
-        
-        <div className="flex-1 overflow-y-auto py-4 space-y-4 pr-4 scrollbar-thin">
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Title <span className="text-red-500">*</span></label>
-            <input className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background" placeholder="e.g. ERP Implementation for ABC Corp" />
-          </div>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[90vh] w-full overflow-y-auto sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Add enquiry</DialogTitle>
+          <DialogDescription>Log a new sales enquiry and track it through your pipeline.</DialogDescription>
+        </DialogHeader>
 
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Client <span className="text-red-500">*</span></label>
-            <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background">
-              <option value="">Select a client...</option>
-              <option value="c1">Acme Corp</option>
-              <option value="c2">Stark Industries</option>
-            </select>
-          </div>
+        <div style={{ padding: '20px 24px' }}>
+          <section className="space-y-4">
+            <h3 className="text-sm font-semibold">Enquiry details</h3>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+              <div className="space-y-2 sm:col-span-2">
+                <Label htmlFor="enq-title">Title *</Label>
+                <Input id="enq-title" placeholder="e.g. ERP Implementation for ABC Corp" />
+              </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Expected Revenue (₹)</label>
-              <input type="number" className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background" placeholder="500000" />
+              <div className="space-y-2 sm:col-span-2">
+                <Label htmlFor="enq-client">Client *</Label>
+                <Select>
+                  <SelectTrigger id="enq-client">
+                    <SelectValue placeholder="Select a client..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="c1">Acme Corp</SelectItem>
+                    <SelectItem value="c2">Stark Industries</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="enq-revenue">Expected revenue (₹)</Label>
+                <Input id="enq-revenue" type="number" placeholder="500000" />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="enq-probability">Probability (%)</Label>
+                <Input id="enq-probability" type="number" min={0} max={100} placeholder="50" />
+              </div>
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Probability (%)</label>
-              <input type="number" min="0" max="100" className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background" placeholder="50" />
-            </div>
-          </div>
+          </section>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Priority</label>
-              <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background">
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
-                <option value="urgent">Urgent</option>
-              </select>
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Source</label>
-              <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background">
-                {ENQUIRY_SOURCES.map(s => (
-                  <option key={s.value} value={s.value}>{s.label}</option>
-                ))}
-              </select>
-            </div>
-          </div>
+          <section className="space-y-4 border-t pt-6">
+            <h3 className="text-sm font-semibold">Classification</h3>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+              <div className="space-y-2">
+                <Label htmlFor="enq-priority">Priority</Label>
+                <Select defaultValue="medium">
+                  <SelectTrigger id="enq-priority">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="low">Low</SelectItem>
+                    <SelectItem value="medium">Medium</SelectItem>
+                    <SelectItem value="high">High</SelectItem>
+                    <SelectItem value="urgent">Urgent</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
 
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Expected Close Date</label>
-            <input type="date" className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background" />
-          </div>
+              <div className="space-y-2">
+                <Label htmlFor="enq-source">Source</Label>
+                <Select>
+                  <SelectTrigger id="enq-source">
+                    <SelectValue placeholder="Select source" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ENQUIRY_SOURCES.map((s) => (
+                      <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Description</label>
-            <textarea className="flex min-h-[100px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background resize-none" placeholder="Requirements details..." />
-          </div>
+              <div className="space-y-2 sm:col-span-2">
+                <Label htmlFor="enq-close-date">Expected close date</Label>
+                <Input id="enq-close-date" type="date" />
+              </div>
+            </div>
+          </section>
+
+          <section className="space-y-4 border-t pt-6">
+            <h3 className="text-sm font-semibold">Notes</h3>
+            <div className="space-y-2">
+              <Label htmlFor="enq-description">Description</Label>
+              <Textarea id="enq-description" placeholder="Requirements details..." className="resize-none" rows={3} />
+            </div>
+          </section>
         </div>
 
-        <SheetFooter className="pt-4 border-t mt-auto">
-          <Button variant="outline" onClick={() => onOpenChange(false)} className="w-full sm:w-auto">Cancel</Button>
-          <Button className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700">Save Enquiry</Button>
-        </SheetFooter>
-      </SheetContent>
-    </Sheet>
+        <DialogFooter className="sticky bottom-0 border-t bg-background py-4">
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button>Save enquiry</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

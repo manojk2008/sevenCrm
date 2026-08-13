@@ -99,12 +99,24 @@ function SelectLabel({
   className,
   ...props
 }: SelectPrimitive.GroupLabel.Props) {
+  // SelectPrimitive.GroupLabel reads SelectGroupContext, which only exists
+  // inside SelectPrimitive.Group (same requirement as Menu.GroupLabel in
+  // dropdown-menu.tsx). Unlike that case, this app has zero existing
+  // SelectLabel/SelectGroup usages to match, and the documented shadcn/Base
+  // UI composition is genuinely `<SelectGroup><SelectLabel/>...items</SelectGroup>`
+  // (label and items together) rather than siblings — so SelectLabel
+  // supplies its own single-label group only as a fallback for standalone
+  // use; when correctly nested inside a consumer's own SelectGroup, that
+  // outer group still renders and still holds the items, this just means
+  // its `aria-labelledby` won't be auto-populated in that specific case.
   return (
-    <SelectPrimitive.GroupLabel
-      data-slot="select-label"
-      className={cn("px-1.5 py-1 text-xs text-muted-foreground", className)}
-      {...props}
-    />
+    <SelectPrimitive.Group>
+      <SelectPrimitive.GroupLabel
+        data-slot="select-label"
+        className={cn("px-1.5 py-1 text-xs text-muted-foreground", className)}
+        {...props}
+      />
+    </SelectPrimitive.Group>
   )
 }
 

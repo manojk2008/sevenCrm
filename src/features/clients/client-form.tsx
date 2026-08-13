@@ -18,7 +18,6 @@ export interface ClientRecord {
   id: string;
   name: string;
   contactperson: string;
-  email: string;
   phone: string;
   website?: string;
   gstNumber?: string;
@@ -28,8 +27,8 @@ export interface ClientRecord {
   lastActivity: string;
   primaryContact: {
     name: string;
-    email: string;
     phone: string;
+    email?: string;
     designation?: string;
   };
   address: {
@@ -47,9 +46,7 @@ const clientSchema = z.object({
   id: z.string().optional(),
   name: z.string().min(1, "Company name is required"),
   contactperson: z.string().min(1, "Contact person is required"),
-  email: z.string().email("Invalid email address"),
   phone: z.string().min(1, "Phone number is required"),
-  website: z.string().optional(),
   gstNumber: z.string().optional(),
   status: z.enum(["active", "inactive"]),
   churnReason: z.string().optional(),
@@ -58,8 +55,8 @@ const clientSchema = z.object({
   lastActivity: z.string().optional(),
   primaryContact: z.object({
     name: z.string().min(1, "Primary contact name is required"),
-    email: z.string().email("Invalid email for primary contact"),
     phone: z.string().min(1, "Primary contact phone is required"),
+    email: z.string().optional(),
     designation: z.string().optional(),
   }),
   address: z.object({
@@ -93,15 +90,13 @@ interface ClientFormProps {
 const emptyClient: ClientFormInput = {
   name: "",
   contactperson: "",
-  email: "",
   phone: "",
-  website: "",
   gstNumber: "",
   status: "active",
   churnReason: "",
   tags: ["New"],
   revenue: 0,
-  primaryContact: { name: "", email: "", phone: "", designation: "" },
+  primaryContact: { name: "", phone: "", email: "", designation: "" },
   address: { line1: "", city: "", state: "", pincode: "", country: "India" },
   notes: "",
 };
@@ -186,15 +181,11 @@ export function ClientForm({ open, onOpenChange, client, onSubmit }: ClientFormP
                 <Field id="client-contact-person" label="Contact Person"  error={errors.contactperson?.message}>
                   <Input id="client-contact-person" {...register("contactperson")} className={errors.contactperson ? "border-destructive" : ""} />
                 </Field>
-                <Field id="client-email" label="Company email"  error={errors.email?.message}>
-                  <Input id="client-email" type="email" {...register("email")} className={errors.email ? "border-destructive" : ""} />
-                </Field>
+               
                 <Field id="client-phone" label="Phone" required error={errors.phone?.message}>
                   <Input id="client-phone" {...register("phone")} className={errors.phone ? "border-destructive" : ""} />
                 </Field>
-                <Field id="client-website" label="Website">
-                  <Input id="client-website" {...register("website")} />
-                </Field>
+                
                 <Field id="client-gst-number" label="GST number">
                   <div className="flex gap-2">
                     <Input
@@ -232,9 +223,6 @@ export function ClientForm({ open, onOpenChange, client, onSubmit }: ClientFormP
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <Field id="primary-contact-name" label="Name"  error={errors.primaryContact?.name?.message}>
                   <Input id="primary-contact-name" {...register("primaryContact.name")} className={errors.primaryContact?.name ? "border-destructive" : ""} />
-                </Field>
-                <Field id="primary-contact-email" label="Email"  error={errors.primaryContact?.email?.message}>
-                  <Input id="primary-contact-email" type="email" {...register("primaryContact.email")} className={errors.primaryContact?.email ? "border-destructive" : ""} />
                 </Field>
                 <Field id="primary-contact-phone" label="Phone" required error={errors.primaryContact?.phone?.message}>
                   <Input id="primary-contact-phone" {...register("primaryContact.phone")} className={errors.primaryContact?.phone ? "border-destructive" : ""} />

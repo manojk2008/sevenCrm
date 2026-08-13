@@ -7,51 +7,22 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
-import { Eye, EyeOff, Loader2, Shield, User, Quote } from "lucide-react";
+import { Eye, EyeOff, Loader2, Quote } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Separator } from "@/components/ui/separator";
-
 import { useAuthStore } from "@/stores/auth-store";
 import Link from "next/link";
 
 const loginSchema = z.object({
   email: z.string().min(1, "Email is required").email("Invalid email address"),
-  password: z.string().min(6, "Password must be at least 8 characters"),
+  password: z.string().min(8, "Password must be at least 8 characters"),
   rememberMe: z.boolean(),
 });
 
 type LoginFormValues = z.infer<typeof loginSchema>;
 
-const DEMO_ACCOUNTS = [
-  {
-    role: "Super Admin",
-    name: "Rajesh Kumar",
-    email: "rajesh@sevencrm.com",
-    icon: Shield,
-  },
-  {
-    role: "Admin",
-    name: "Priya Sharma",
-    email: "priya@sevencrm.com",
-    icon: Shield,
-  },
-  {
-    role: "Sales Manager",
-    name: "Amit Patel",
-    email: "amit@sevencrm.com",
-    icon: User,
-  },
-  {
-    role: "Sales Exec",
-    name: "Vikram Singh",
-    email: "vikram@sevencrm.com",
-    icon: User,
-  },
-];
 
 export default function LoginPage() {
   const router = useRouter();
@@ -89,20 +60,6 @@ export default function LoginPage() {
     } catch {
       triggerShake();
       toast.error("Invalid email or password");
-    }
-  };
-
-  const handleDemoLogin = async (email: string) => {
-    setValue("email", email);
-    setValue("password", "password123");
-    
-    try {
-      await login(email, "password123");
-      toast.success("Logged in as Demo User");
-      router.replace("/dashboard");
-    } catch {
-      triggerShake();
-      toast.error("Demo login failed");
     }
   };
 
@@ -270,18 +227,6 @@ export default function LoginPage() {
                 </AnimatePresence>
               </div>
 
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="rememberMe"
-                  checked={rememberMe}
-                  onCheckedChange={(checked) =>
-                    setValue("rememberMe", Boolean(checked), { shouldDirty: true })
-                  }
-                />
-                <Label htmlFor="rememberMe" className="text-sm font-normal text-slate-600 dark:text-slate-400 cursor-pointer">
-                  Remember me for 30 days
-                </Label>
-              </div>
 
               <Button
                 type="submit"
@@ -299,37 +244,6 @@ export default function LoginPage() {
               </Button>
             </form>
           </motion.div>
-
-          <div className="mt-8">
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center">
-                <Separator className="w-full" />
-              </div>
-              <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-white dark:bg-slate-950 px-2 text-slate-500">
-                  Quick Demo Access
-                </span>
-              </div>
-            </div>
-
-            <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {DEMO_ACCOUNTS.map((account, index) => (
-                <Button
-                  key={index}
-                  variant="outline"
-                  className="h-auto py-3 px-4 justify-start text-left border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900 group"
-                  onClick={() => handleDemoLogin(account.email)}
-                  disabled={isSubmitting}
-                >
-                  <account.icon className="w-4 h-4 mr-3 text-slate-400 group-hover:text-indigo-600 transition-colors" />
-                  <div className="flex flex-col">
-                    <span className="text-sm font-medium text-slate-900 dark:text-slate-100">{account.role}</span>
-                    <span className="text-xs text-slate-500">{account.name}</span>
-                  </div>
-                </Button>
-              ))}
-            </div>
-          </div>
         </motion.div>
       </div>
     </div>

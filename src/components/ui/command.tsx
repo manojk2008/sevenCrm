@@ -60,7 +60,12 @@ function CommandDialog({
         )}
         showCloseButton={showCloseButton}
       >
-        {children}
+        {/* cmdk's Input/List/Item/Group/Empty all read context created by
+            the Command root (subscribe/snapshot store + item registry) —
+            without it, e.g. CommandInput crashes reading `.subscribe` off
+            an undefined context. See DataTableFacetedFilter for the same
+            pattern used correctly outside a dialog. */}
+        <Command>{children}</Command>
       </DialogContent>
     </Dialog>
   )
