@@ -16,7 +16,8 @@ import {
 } from "lucide-react";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { SUPPORTED_REPORT_TYPES, type ReportType } from "@/types/reports";
 
 const reports = [
   {
@@ -119,6 +120,7 @@ export function ReportsContent() {
       >
         {reports.map((report) => {
           const Icon = report.icon;
+          const isSupported = SUPPORTED_REPORT_TYPES.includes(report.id as ReportType);
           return (
             <motion.div key={report.id} variants={item}>
               <Link href={`/reports/${report.id}`} className="block h-full">
@@ -127,8 +129,15 @@ export function ReportsContent() {
                     <div className={`p-3 rounded-xl ${report.color} group-hover:scale-110 transition-transform`}>
                       <Icon className="h-6 w-6" />
                     </div>
-                    <div className="space-y-1">
-                      <CardTitle className="text-xl">{report.title}</CardTitle>
+                    <div className="flex-1 space-y-1">
+                      <div className="flex items-center gap-2">
+                        <CardTitle className="text-xl">{report.title}</CardTitle>
+                        {!isSupported && (
+                          <Badge variant="outline" className="text-[10px] text-muted-foreground">
+                            Not available
+                          </Badge>
+                        )}
+                      </div>
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-4">

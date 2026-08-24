@@ -1,21 +1,72 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
+import { ChartSkeleton } from "@/components/shared/skeleton-loader";
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from "recharts";
+import { formatNumber } from "@/lib/format";
+import { getLeadSources, getDashboardErrorMessage } from "./api";
+import type { EnquirySource } from "@/types/enquiry";
 
-const data = [
-  { name: 'Website', value: 35, color: 'var(--chart-1)' },
-  { name: 'Referral', value: 25, color: 'var(--chart-3)' },
-  { name: 'Cold Call', value: 15, color: 'var(--chart-4)' },
-  { name: 'Social Media', value: 10, color: 'var(--chart-2)' },
-  { name: 'Trade Show', value: 8, color: 'var(--chart-5)' },
-  { name: 'Other', value: 7, color: 'var(--muted-foreground)' },
+const SOURCE_LABEL: Record<EnquirySource, string> = {
+  website: "Website",
+  referral: "Referral",
+  "cold-call": "Cold Call",
+  "social-media": "Social Media",
+  email: "Email",
+  "trade-show": "Trade Show",
+  advertisement: "Advertisement",
+  partner: "Partner",
+  other: "Other",
+};
+
+const CHART_COLORS = [
+  "var(--chart-1)",
+  "var(--chart-2)",
+  "var(--chart-3)",
+  "var(--chart-4)",
+  "var(--chart-5)",
 ];
 
-const totalLeads = data.reduce((acc, curr) => acc + curr.value, 0) * 12; // Just to make it a bigger number
+interface ChartSlice {
+  name: string;
+  value: number;
+}
 
 export function LeadSourcesChart() {
+  const [slices, setSlices] = useState<ChartSlice[] | null>(null);
+  const [totalLeads, setTotalLeads] = useState(0);
+  const [errorMessage, setErrorMessage] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      setIsLoading(true);
+      try {
+        const result = await getLeadSources();
+        if (cancelled) return;
+        setSlices(
+          result.sources
+            .filter((s) => s.count > 0)
+            .map((s) => ({ name: SOURCE_LABEL[s.source], value: s.count })),
+        );
+        setTotalLeads(result.totalLeads);
+        setErrorMessage("");
+      } catch (error) {
+        if (cancelled) return;
+        setErrorMessage(getDashboardErrorMessage(error));
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    }
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.95 }}
@@ -29,41 +80,45 @@ export function LeadSourcesChart() {
           <CardDescription>Where are enquiries coming from</CardDescription>
         </CardHeader>
         <CardContent className="flex-1 flex flex-col items-center justify-center min-h-[300px] relative">
-          <div className="absolute inset-0 flex items-center justify-center flex-col pointer-events-none pb-6">
-            <span className="text-3xl font-bold text-foreground">{totalLeads}</span>
-            <span className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Total Leads</span>
-          </div>
-          <ResponsiveContainer width="100%" height={260}>
-            <PieChart>
-              <Pie
-                data={data}
-                cx="50%"
-                cy="50%"
-                innerRadius={75}
-                outerRadius={100}
-                paddingAngle={3}
-                dataKey="value"
-                stroke="none"
-              >
-                {data.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={entry.color} />
-                ))}
-              </Pie>
-              <Tooltip
-                formatter={(value) => {
-                  const num = typeof value === 'number' ? value : Number(value ?? 0);
-                  return [`${num}%`, 'Share'];
-                }}
-                contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px...' /* keep the rest unchanged */ }}
-              />
-              <Legend
-                verticalAlign="bottom"
-                height={36}
-                iconType="circle"
-                wrapperStyle={{ fontSize: '12px' }}
-              />
-            </PieChart>
-          </ResponsiveContainer>
+          {isLoading ? (
+            <ChartSkeleton />
+          ) : errorMessage ? (
+            <p className="text-sm text-muted-foreground">{errorMessage}</p>
+          ) : !slices || slices.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No enquiries yet.</p>
+          ) : (
+            <>
+              <div className="absolute inset-0 flex items-center justify-center flex-col pointer-events-none pb-6">
+                <span className="text-3xl font-bold text-foreground">{formatNumber(totalLeads)}</span>
+                <span className="text-xs text-muted-foreground uppercase tracking-wider font-medium">
+                  Total Leads
+                </span>
+              </div>
+              <ResponsiveContainer width="100%" height={260}>
+                <PieChart>
+                  <Pie
+                    data={slices}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={75}
+                    outerRadius={100}
+                    paddingAngle={3}
+                    dataKey="value"
+                    stroke="none"
+                  >
+                    {slices.map((_, index) => (
+                      <Cell key={index} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    formatter={(value, name) => [formatNumber(Number(value ?? 0)), name]}
+                    contentStyle={{ borderRadius: "8px", border: "1px solid var(--border)" }}
+                  />
+                  <Legend verticalAlign="bottom" height={36} iconType="circle" wrapperStyle={{ fontSize: "12px" }} />
+                </PieChart>
+              </ResponsiveContainer>
+            </>
+          )}
         </CardContent>
       </Card>
     </motion.div>

@@ -11,6 +11,8 @@ import { ProductsModule } from './products/products.module';
 import { QuotationsModule } from './quotations/quotations.module';
 import { FollowUpsModule } from './follow-ups/follow-ups.module';
 import { SalesModule } from './sales/sales.module';
+import { DashboardModule } from './dashboard/dashboard.module';
+import { AnalyticsModule } from './analytics/analytics.module';
 
 @Module({
   imports: [
@@ -23,6 +25,8 @@ import { SalesModule } from './sales/sales.module';
     QuotationsModule,
     FollowUpsModule,
     SalesModule,
+    DashboardModule,
+    AnalyticsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -1,63 +1,63 @@
 "use client";
 
-import { useState } from "react";
+/**
+ * Reports — every supported type is real data composed from /sales/* and
+ * /dashboard/monthly-comparison (see ./api.ts). There is no backend module
+ * for Reports itself and no report type here recomputes a figure Sales
+ * already owns (Phase 8 decision D6).
+ *
+ * "client" (acquisition trend) and "follow-up" (completion rate) are NOT
+ * implemented — building either honestly would need a new aggregation this
+ * phase did not build — so they render an explicit "not available" state
+ * rather than a fabricated chart (see SUPPORTED_REPORT_TYPES in
+ * src/types/reports.ts for the full reasoning).
+ */
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { format } from "date-fns";
 import type { DateRange } from "react-day-picker";
-import { ArrowLeft, Download, Printer, FileSpreadsheet } from "lucide-react";
-import { toast } from "sonner";
-import { 
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer,
-  AreaChart, Area, PieChart, Pie, Cell, Legend
+import { ArrowLeft, Ban, Download, Info } from "lucide-react";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip as RechartsTooltip,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  Legend,
 } from "recharts";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DatePickerWithRange } from "@/components/ui/date-range-picker";
-import { formatCurrency } from "@/lib/format";
+import { ChartSkeleton, TableSkeleton } from "@/components/shared/skeleton-loader";
+import { formatCurrency, formatNumber, formatPercentage } from "@/lib/format";
+import { SUPPORTED_REPORT_TYPES, type CsvRow, type ReportType } from "@/types/reports";
+import {
+  downloadCsv,
+  getConversionReportData,
+  getExecutiveReportData,
+  getMonthlyReportData,
+  getPipelineReportData,
+  getProductReportData,
+  getReportErrorMessage,
+  getRevenueReportData,
+  getSalesReportData,
+  type ConversionReportData,
+  type ExecutiveReportData,
+  type MonthlyReportData,
+  type PipelineReportData,
+  type ProductReportData,
+  type RevenueReportData,
+  type SalesReportData,
+} from "./api";
 
-// Mock Data
-const salesData = [
-  { name: "Jan", won: 45, revenue: 1500000, avg: 33333, rate: 25 },
-  { name: "Feb", won: 52, revenue: 1800000, avg: 34615, rate: 28 },
-  { name: "Mar", won: 61, revenue: 2200000, avg: 36065, rate: 32 },
-  { name: "Apr", won: 48, revenue: 1600000, avg: 33333, rate: 26 },
-  { name: "May", won: 55, revenue: 2000000, avg: 36363, rate: 29 },
-  { name: "Jun", won: 65, revenue: 2500000, avg: 38461, rate: 35 },
-  { name: "Jul", won: 70, revenue: 2800000, avg: 40000, rate: 38 },
-  { name: "Aug", won: 68, revenue: 2600000, avg: 38235, rate: 36 },
-  { name: "Sep", won: 75, revenue: 3100000, avg: 41333, rate: 41 },
-  { name: "Oct", won: 82, revenue: 3500000, avg: 42682, rate: 45 },
-  { name: "Nov", won: 85, revenue: 3800000, avg: 44705, rate: 47 },
-  { name: "Dec", won: 95, revenue: 4500000, avg: 47368, rate: 52 },
-];
-
-const revenueByClientData = [
-  { name: "Acme Corp", value: 1250000 },
-  { name: "Globex Inc", value: 980000 },
-  { name: "Soylent Corp", value: 850000 },
-  { name: "Initech", value: 720000 },
-  { name: "Umbrella Corp", value: 650000 },
-];
-
-const revenueByProductData = [
-  { name: "Enterprise ERP", value: 4500000 },
-  { name: "Cloud Storage", value: 3200000 },
-  { name: "Consulting", value: 2100000 },
-  { name: "Support SLA", value: 1800000 },
-];
-
-const executiveData = [
-  { name: "Rahul Sharma", deals: 145, revenue: 5500000, rate: 32, cycle: 18 },
-  { name: "Priya Patel", deals: 128, revenue: 4800000, rate: 28, cycle: 22 },
-  { name: "Amit Kumar", deals: 112, revenue: 4200000, rate: 25, cycle: 25 },
-  { name: "Neha Singh", deals: 156, revenue: 6100000, rate: 35, cycle: 15 },
-];
-
-// Categorical series colours. These were the Recharts documentation defaults;
-// they now come from the app's chart ramp so they follow the active theme.
-const COLORS = [
+const CHART_COLORS = [
   "var(--chart-1)",
   "var(--chart-2)",
   "var(--chart-3)",
@@ -65,236 +65,119 @@ const COLORS = [
   "var(--chart-5)",
 ];
 
+type ReportData =
+  | { kind: "sales"; data: SalesReportData }
+  | { kind: "revenue"; data: RevenueReportData }
+  | { kind: "executive"; data: ExecutiveReportData }
+  | { kind: "product"; data: ProductReportData }
+  | { kind: "pipeline"; data: PipelineReportData }
+  | { kind: "conversion"; data: ConversionReportData }
+  | { kind: "monthly"; data: MonthlyReportData };
+
 interface ReportViewerProps {
   type: string;
 }
 
-export function ReportViewer({ type }: ReportViewerProps) {
-  const [date, setDate] = useState<DateRange | undefined>({
-    from: new Date(new Date().getFullYear(), 0, 1),
-    to: new Date(),
-  });
+function getReportTitle(type: string): string {
+  return (
+    type
+      .split("-")
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(" ") + " Report"
+  );
+}
 
-  const handleExportCSV = () => toast.success("Exported to CSV");
-  const handleExportExcel = () => toast.success("Exported to Excel");
-  const handlePrint = () => window.print();
-
-  const getReportTitle = () => {
-    return type.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ') + " Report";
+function NotAvailableReport({ type }: { type: string }) {
+  const reasons: Record<string, string> = {
+    client:
+      "A new-clients-over-time trend needs a Clients-by-month aggregation that was not built in this phase.",
+    "follow-up":
+      "A completion-rate analysis needs further follow-up outcome aggregation that was not built in this phase.",
   };
+  return (
+    <Card className="rounded-xl border-dashed shadow-none bg-muted/30">
+      <CardContent className="flex flex-col items-center gap-3 p-12 text-center">
+        <Ban className="h-8 w-8 text-muted-foreground/60" />
+        <h3 className="text-lg font-semibold text-muted-foreground">Not available</h3>
+        <p className="max-w-md text-sm text-muted-foreground">
+          {reasons[type] ??
+            "This report is not implemented in this phase and no fabricated figures are shown in its place."}
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
 
-  const renderSalesChart = () => (
-    <div className="space-y-6">
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card className="rounded-xl">
-          <CardContent className="p-6">
-            <div className="text-sm font-medium text-muted-foreground">Total Revenue</div>
-            <div className="text-2xl font-bold mt-2">{formatCurrency(31900000)}</div>
-          </CardContent>
-        </Card>
-        <Card className="rounded-xl">
-          <CardContent className="p-6">
-            <div className="text-sm font-medium text-muted-foreground">Avg Deal Size</div>
-            <div className="text-2xl font-bold mt-2">{formatCurrency(39875)}</div>
-          </CardContent>
-        </Card>
-        <Card className="rounded-xl">
-          <CardContent className="p-6">
-            <div className="text-sm font-medium text-muted-foreground">Best Month</div>
-            <div className="text-2xl font-bold mt-2">December</div>
-          </CardContent>
-        </Card>
-        <Card className="rounded-xl">
-          <CardContent className="p-6">
-            <div className="text-sm font-medium text-muted-foreground">Total Deals Won</div>
-            <div className="text-2xl font-bold mt-2">801</div>
-          </CardContent>
-        </Card>
-      </div>
+export function ReportViewer({ type }: ReportViewerProps) {
+  const reportType = type as ReportType;
+  const isSupported = SUPPORTED_REPORT_TYPES.includes(reportType);
 
-      <Card className="rounded-xl">
-        <CardHeader>
-          <CardTitle>Monthly Revenue Trend</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="h-[400px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={salesData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
-                <XAxis dataKey="name" stroke="var(--muted-foreground)" fontSize={12} tickLine={false} axisLine={false} />
-                <YAxis stroke="var(--muted-foreground)" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => `₹${value / 100000}L`} />
-                <RechartsTooltip 
-                  cursor={{fill: 'var(--muted)', opacity: 0.2}}
-                  contentStyle={{borderRadius: '8px', border: '1px solid var(--border)'}}
-                  formatter={(value) => formatCurrency(typeof value === 'number' ? value : Number(value ?? 0))}
-                />
-                <Bar dataKey="revenue" fill="var(--primary)" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </CardContent>
-      </Card>
+  const [date, setDate] = useState<DateRange | undefined>(undefined);
+  const [loadState, setLoadState] = useState<"loading" | "error" | "ready">(
+    isSupported ? "loading" : "ready",
+  );
+  const [errorMessage, setErrorMessage] = useState("");
+  const [reportData, setReportData] = useState<ReportData | null>(null);
 
-      <Card className="rounded-xl">
-        <CardHeader>
-          <CardTitle>Sales Data Table</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Month</TableHead>
-                <TableHead className="text-right">Deals Won</TableHead>
-                <TableHead className="text-right">Revenue</TableHead>
-                <TableHead className="text-right">Avg Deal Size</TableHead>
-                <TableHead className="text-right">Win Rate</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {salesData.map((row) => (
-                <TableRow key={row.name}>
-                  <TableCell className="font-medium">{row.name}</TableCell>
-                  <TableCell className="text-right">{row.won}</TableCell>
-                  <TableCell className="text-right">{formatCurrency(row.revenue)}</TableCell>
-                  <TableCell className="text-right">{formatCurrency(row.avg)}</TableCell>
-                  <TableCell className="text-right">{row.rate}%</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
-    </div>
+  const params = useMemo(
+    () => ({ from: date?.from?.toISOString(), to: date?.to?.toISOString() }),
+    [date?.from, date?.to],
   );
 
-  const renderRevenueChart = () => (
-    <div className="space-y-6">
-      <Card className="rounded-xl">
-        <CardHeader>
-          <CardTitle>Cumulative Revenue</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="h-[300px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={salesData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="var(--primary)" stopOpacity={0.8}/>
-                    <stop offset="95%" stopColor="var(--primary)" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="name" />
-                <YAxis tickFormatter={(val) => `₹${val/100000}L`} />
-                <RechartsTooltip formatter={(value) => formatCurrency(typeof value === 'number' ? value : Number(value ?? 0))}/>
-                <Area type="monotone" dataKey="revenue" stroke="var(--primary)" fillOpacity={1} fill="url(#colorRevenue)" />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </CardContent>
-      </Card>
+  useEffect(() => {
+    if (!isSupported) return;
+    let cancelled = false;
+    async function load() {
+      setLoadState("loading");
+      try {
+        let next: ReportData;
+        switch (reportType) {
+          case "sales":
+            next = { kind: "sales", data: await getSalesReportData(params) };
+            break;
+          case "revenue":
+            next = { kind: "revenue", data: await getRevenueReportData(params) };
+            break;
+          case "executive":
+            next = { kind: "executive", data: await getExecutiveReportData(params) };
+            break;
+          case "product":
+            next = { kind: "product", data: await getProductReportData(params) };
+            break;
+          case "pipeline":
+            next = { kind: "pipeline", data: await getPipelineReportData(params) };
+            break;
+          case "conversion":
+            next = { kind: "conversion", data: await getConversionReportData(params) };
+            break;
+          case "monthly":
+            next = { kind: "monthly", data: await getMonthlyReportData() };
+            break;
+          default:
+            return;
+        }
+        if (cancelled) return;
+        setReportData(next);
+        setErrorMessage("");
+        setLoadState("ready");
+      } catch (error) {
+        if (cancelled) return;
+        setErrorMessage(getReportErrorMessage(error));
+        setLoadState("error");
+      }
+    }
+    void load();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reportType, params.from, params.to]);
 
-      <div className="grid md:grid-cols-2 gap-6">
-        <Card className="rounded-xl">
-          <CardHeader>
-            <CardTitle>Top Clients by Revenue</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="h-[300px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart layout="vertical" data={revenueByClientData} margin={{top: 5, right: 30, left: 40, bottom: 5}}>
-                  <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                  <XAxis type="number" tickFormatter={(val) => `₹${val/100000}L`} />
-                  <YAxis dataKey="name" type="category" width={80} />
-                  <RechartsTooltip formatter={(value) => formatCurrency(typeof value === 'number' ? value : Number(value ?? 0))} />
-                  <Bar dataKey="value" fill="var(--chart-2)" radius={[0, 4, 4, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </CardContent>
-        </Card>
-        
-        <Card className="rounded-xl">
-          <CardHeader>
-            <CardTitle>Revenue by Product</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="h-[300px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={revenueByProductData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={60}
-                    outerRadius={100}
-                    paddingAngle={5}
-                    dataKey="value"
-                  >
-                    {revenueByProductData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <RechartsTooltip formatter={(value) => formatCurrency(typeof value === 'number' ? value : Number(value ?? 0))} />
-                  <Legend />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    </div>
-  );
+  const csvRows = useMemo<CsvRow[]>(() => toCsvRows(reportData), [reportData]);
 
-  const renderExecutiveChart = () => (
-    <div className="space-y-6">
-      <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {executiveData.map((exec, i) => (
-          <Card key={exec.name} className="rounded-xl">
-            <CardContent className="p-6">
-              <div className="flex justify-between items-start">
-                <div>
-                  <h3 className="font-semibold">{exec.name}</h3>
-                  <p className="text-sm text-muted-foreground">{exec.deals} Deals Won</p>
-                </div>
-                <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold">
-                  {i+1}
-                </div>
-              </div>
-              <div className="mt-4">
-                <div className="text-2xl font-bold">{formatCurrency(exec.revenue)}</div>
-                <div className="flex items-center text-sm mt-1">
-                  <span className="text-green-500 mr-2">Win Rate: {exec.rate}%</span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      <Card className="rounded-xl">
-        <CardHeader>
-          <CardTitle>Executive Performance Comparison</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="h-[400px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={executiveData} margin={{top: 20, right: 30, left: 20, bottom: 5}}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="name" />
-                <YAxis yAxisId="left" tickFormatter={(val) => `₹${val/100000}L`} />
-                <YAxis yAxisId="right" orientation="right" tickFormatter={(val) => `${val}%`} />
-                <RechartsTooltip />
-                <Legend />
-                <Bar yAxisId="left" dataKey="revenue" name="Revenue" fill="var(--primary)" radius={[4, 4, 0, 0]} />
-                <Bar yAxisId="right" dataKey="rate" name="Win Rate (%)" fill="var(--chart-3)" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
-  );
+  const handleExportCsv = () => {
+    downloadCsv(`${type}-report`, csvRows);
+  };
 
   return (
     <div className="space-y-6">
@@ -308,30 +191,561 @@ export function ReportViewer({ type }: ReportViewerProps) {
             <ArrowLeft className="h-4 w-4" />
           </Link>
           <div>
-            <h2 className="text-3xl font-bold tracking-tight">{getReportTitle()}</h2>
-            <CardDescription>Detailed analysis and insights</CardDescription>
+            <h2 className="text-3xl font-bold tracking-tight">{getReportTitle(type)}</h2>
+            <CardDescription>
+              {isSupported ? "Real figures from accepted quotations and enquiries." : "Detailed analysis and insights"}
+            </CardDescription>
           </div>
         </div>
-        
+
         <div className="flex items-center gap-2">
-          <DatePickerWithRange date={date} setDate={setDate} />
-          <Button variant="outline" size="sm" onClick={handleExportCSV}>
+          {isSupported && <DatePickerWithRange date={date} setDate={setDate} />}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExportCsv}
+            disabled={!isSupported || csvRows.length === 0}
+          >
             <Download className="mr-2 h-4 w-4" /> CSV
           </Button>
-          <Button variant="outline" size="sm" onClick={handleExportExcel}>
-            <FileSpreadsheet className="mr-2 h-4 w-4" /> Excel
-          </Button>
-          <Button variant="outline" size="sm" onClick={handlePrint}>
-            <Printer className="mr-2 h-4 w-4" /> Print
+          <Button variant="outline" size="sm" disabled title="Excel export is not available in this phase.">
+            Excel (unavailable)
           </Button>
         </div>
       </div>
 
-      {type === 'sales' ? renderSalesChart() : 
-       type === 'revenue' ? renderRevenueChart() : 
-       type === 'executive' ? renderExecutiveChart() : 
-       renderSalesChart()} 
-       {/* Fallback to sales chart for other types for this demo */}
+      {isSupported && (
+        <div className="flex items-start gap-2 rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
+          <Info className="mt-0.5 h-4 w-4 shrink-0" />
+          <p>
+            Figures are filtered by the date each quotation or enquiry was <em>raised</em>, not when
+            it was accepted, won, or closed — the database records no such timestamp.
+          </p>
+        </div>
+      )}
+
+      {!isSupported && <NotAvailableReport type={reportType} />}
+
+      {isSupported && loadState === "loading" && (
+        <div className="space-y-6">
+          <ChartSkeleton />
+          <TableSkeleton rows={5} />
+        </div>
+      )}
+
+      {isSupported && loadState === "error" && (
+        <Card className="rounded-xl border-dashed">
+          <CardContent className="p-8 text-center text-sm text-muted-foreground">{errorMessage}</CardContent>
+        </Card>
+      )}
+
+      {isSupported && loadState === "ready" && reportData && <ReportBody reportData={reportData} />}
     </div>
   );
+}
+
+function ReportBody({ reportData }: { reportData: ReportData }) {
+  switch (reportData.kind) {
+    case "sales":
+      return <SalesReport data={reportData.data} />;
+    case "revenue":
+      return <RevenueReport data={reportData.data} />;
+    case "executive":
+      return <ExecutiveReport data={reportData.data} />;
+    case "product":
+      return <ProductReport data={reportData.data} />;
+    case "pipeline":
+      return <PipelineReport data={reportData.data} />;
+    case "conversion":
+      return <ConversionReport data={reportData.data} />;
+    case "monthly":
+      return <MonthlyReport data={reportData.data} />;
+  }
+}
+
+// --------------------------------------------------------------- Sales
+
+function SalesReport({ data }: { data: SalesReportData }) {
+  const { summary, byPeriod } = data;
+  const chartData = byPeriod.buckets.map((b) => ({
+    name: format(new Date(b.periodStart), "MMM yyyy"),
+    revenue: b.netAcceptedRevenue,
+  }));
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <StatTile title="Net Accepted Revenue" value={formatCurrency(summary.revenue.netAcceptedRevenue)} />
+        <StatTile title="Avg Accepted Value" value={formatCurrency(summary.revenue.averageAcceptedValue)} />
+        <StatTile title="Accepted Quotations" value={formatNumber(summary.revenue.acceptedQuotationCount)} />
+        <StatTile title="Acceptance Rate" value={formatPercentage(summary.quotationAcceptanceRate.rate)} />
+      </div>
+
+      <Card className="rounded-xl">
+        <CardHeader>
+          <CardTitle>Net Revenue by Month Raised</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {chartData.length === 0 ? (
+            <EmptyChart />
+          ) : (
+            <div className="h-[400px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
+                  <XAxis dataKey="name" stroke="var(--muted-foreground)" fontSize={12} tickLine={false} axisLine={false} />
+                  <YAxis stroke="var(--muted-foreground)" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `₹${v / 100000}L`} />
+                  <RechartsTooltip
+                    cursor={{ fill: "var(--muted)", opacity: 0.2 }}
+                    contentStyle={{ borderRadius: "8px", border: "1px solid var(--border)" }}
+                    formatter={(value) => formatCurrency(typeof value === "number" ? value : Number(value ?? 0))}
+                  />
+                  <Bar dataKey="revenue" fill="var(--primary)" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="rounded-xl">
+        <CardHeader>
+          <CardTitle>Quotations by Status</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-right">Count</TableHead>
+                <TableHead className="text-right">Net Value</TableHead>
+                <TableHead className="text-right">Gross Value</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {summary.quotationStatusBreakdown.map((row) => (
+                <TableRow key={row.status}>
+                  <TableCell className="font-medium capitalize">{row.status}</TableCell>
+                  <TableCell className="text-right">{row.count}</TableCell>
+                  <TableCell className="text-right">{formatCurrency(row.netValue)}</TableCell>
+                  <TableCell className="text-right">{formatCurrency(row.grossValue)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ------------------------------------------------------------- Revenue
+
+function RevenueReport({ data }: { data: RevenueReportData }) {
+  const { byPeriod, byClient, byProduct } = data;
+  const chartData = byPeriod.buckets.map((b) => ({
+    name: format(new Date(b.periodStart), "MMM yyyy"),
+    revenue: b.netAcceptedRevenue,
+  }));
+
+  return (
+    <div className="space-y-6">
+      <Card className="rounded-xl">
+        <CardHeader>
+          <CardTitle>Net Accepted Revenue by Month Raised</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {chartData.length === 0 ? (
+            <EmptyChart />
+          ) : (
+            <div className="h-[300px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
+                  <XAxis dataKey="name" stroke="var(--muted-foreground)" fontSize={12} />
+                  <YAxis tickFormatter={(v) => `₹${v / 100000}L`} stroke="var(--muted-foreground)" fontSize={12} />
+                  <RechartsTooltip formatter={(value) => formatCurrency(typeof value === "number" ? value : Number(value ?? 0))} />
+                  <Bar dataKey="revenue" fill="var(--chart-1)" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <div className="grid md:grid-cols-2 gap-6">
+        <Card className="rounded-xl">
+          <CardHeader>
+            <CardTitle>Top Clients by Net Revenue</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {byClient.length === 0 ? (
+              <EmptyChart />
+            ) : (
+              <div className="h-[300px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart layout="vertical" data={byClient.map((c) => ({ name: c.companyName, value: c.netAcceptedRevenue }))} margin={{ top: 5, right: 30, left: 40, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                    <XAxis type="number" tickFormatter={(v) => `₹${v / 100000}L`} />
+                    <YAxis dataKey="name" type="category" width={100} tick={{ fontSize: 11 }} />
+                    <RechartsTooltip formatter={(value) => formatCurrency(typeof value === "number" ? value : Number(value ?? 0))} />
+                    <Bar dataKey="value" fill="var(--chart-2)" radius={[0, 4, 4, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="rounded-xl">
+          <CardHeader>
+            <CardTitle>Revenue by Product</CardTitle>
+            <CardDescription>Historical price snapshots, not current catalogue price.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {byProduct.length === 0 ? (
+              <EmptyChart />
+            ) : (
+              <div className="h-[300px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={byProduct.map((p) => ({ name: p.productName, value: p.netAcceptedRevenue }))} cx="50%" cy="50%" innerRadius={60} outerRadius={100} paddingAngle={5} dataKey="value">
+                      {byProduct.map((_, index) => (
+                        <Cell key={index} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <RechartsTooltip formatter={(value) => formatCurrency(typeof value === "number" ? value : Number(value ?? 0))} />
+                    <Legend />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+// ----------------------------------------------------------- Executive
+
+function ExecutiveReport({ data }: { data: ExecutiveReportData }) {
+  const { byRepresentative } = data;
+  return (
+    <div className="space-y-6">
+      <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
+        {byRepresentative.slice(0, 4).map((rep, i) => (
+          <Card key={rep.userId ?? "unassigned"} className="rounded-xl">
+            <CardContent className="p-6">
+              <div className="flex justify-between items-start">
+                <div>
+                  <h3 className="font-semibold">{rep.name}</h3>
+                  <p className="text-sm text-muted-foreground">{rep.acceptedQuotationCount} accepted</p>
+                </div>
+                <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold">
+                  {i + 1}
+                </div>
+              </div>
+              <div className="mt-4">
+                <div className="text-2xl font-bold">{formatCurrency(rep.netAcceptedRevenue)}</div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      <Card className="rounded-xl">
+        <CardHeader>
+          <CardTitle>Revenue by Representative</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {byRepresentative.length === 0 ? (
+            <EmptyChart />
+          ) : (
+            <div className="h-[400px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={byRepresentative.map((r) => ({ name: r.name, revenue: r.netAcceptedRevenue, accepted: r.acceptedQuotationCount }))} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                  <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                  <YAxis yAxisId="left" tickFormatter={(v) => `₹${v / 100000}L`} />
+                  <YAxis yAxisId="right" orientation="right" allowDecimals={false} />
+                  <RechartsTooltip />
+                  <Legend />
+                  <Bar yAxisId="left" dataKey="revenue" name="Net Revenue" fill="var(--primary)" radius={[4, 4, 0, 0]} />
+                  <Bar yAxisId="right" dataKey="accepted" name="Accepted Count" fill="var(--chart-3)" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// -------------------------------------------------------------- Product
+
+function ProductReport({ data }: { data: ProductReportData }) {
+  const { byProduct } = data;
+  return (
+    <Card className="rounded-xl">
+      <CardHeader>
+        <CardTitle>Revenue by Product</CardTitle>
+        <CardDescription>Historical price snapshots, not current catalogue price. Ad-hoc lines have no catalogue product.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {byProduct.length === 0 ? (
+          <EmptyChart />
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Product</TableHead>
+                <TableHead className="text-right">Quantity</TableHead>
+                <TableHead className="text-right">Net Revenue</TableHead>
+                <TableHead className="text-right">Gross Revenue</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {byProduct.map((row) => (
+                <TableRow key={row.productId ?? "ad-hoc"}>
+                  <TableCell className="font-medium">{row.productName}</TableCell>
+                  <TableCell className="text-right">{row.quantity}</TableCell>
+                  <TableCell className="text-right">{formatCurrency(row.netAcceptedRevenue)}</TableCell>
+                  <TableCell className="text-right">{formatCurrency(row.grossAcceptedValue)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ------------------------------------------------------------- Pipeline
+
+function PipelineReport({ data }: { data: PipelineReportData }) {
+  const { summary } = data;
+  return (
+    <div className="space-y-6">
+      <Card className="rounded-xl">
+        <CardHeader>
+          <CardTitle>Enquiries by Stage</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Stage</TableHead>
+                <TableHead className="text-right">Count</TableHead>
+                <TableHead className="text-right">Expected Revenue (forecast)</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {summary.enquiryStageBreakdown.map((row) => (
+                <TableRow key={row.stage}>
+                  <TableCell className="font-medium capitalize">{row.stage.replace("-", " ")}</TableCell>
+                  <TableCell className="text-right">{row.count}</TableCell>
+                  <TableCell className="text-right">{formatCurrency(row.expectedRevenue)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+      <Card className="rounded-xl">
+        <CardHeader>
+          <CardTitle>Quotations by Status</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-right">Count</TableHead>
+                <TableHead className="text-right">Net Value</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {summary.quotationStatusBreakdown.map((row) => (
+                <TableRow key={row.status}>
+                  <TableCell className="font-medium capitalize">{row.status}</TableCell>
+                  <TableCell className="text-right">{row.count}</TableCell>
+                  <TableCell className="text-right">{formatCurrency(row.netValue)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ----------------------------------------------------------- Conversion
+
+function ConversionReport({ data }: { data: ConversionReportData }) {
+  const { summary } = data;
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <StatTile title="Enquiries Won" value={formatNumber(summary.enquiryConversion.won)} />
+        <StatTile title="Enquiries Lost" value={formatNumber(summary.enquiryConversion.lost)} />
+        <StatTile title="Enquiry Win Rate" value={formatPercentage(summary.enquiryConversion.winRate)} />
+        <StatTile title="Quotation Acceptance Rate" value={formatPercentage(summary.quotationAcceptanceRate.rate)} />
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Win rate is won ÷ (won + lost); open enquiries are excluded. Acceptance rate is accepted ÷
+        decided quotations (draft/sent are still open and excluded).
+      </p>
+      <Card className="rounded-xl">
+        <CardHeader>
+          <CardTitle>Enquiries by Stage</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {summary.enquiryConversion.total === 0 ? (
+            <EmptyChart />
+          ) : (
+            <div className="h-[300px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={summary.enquiryStageBreakdown.filter((b) => b.count > 0)}
+                    dataKey="count"
+                    nameKey="stage"
+                    innerRadius={60}
+                    outerRadius={100}
+                    paddingAngle={4}
+                  >
+                    {summary.enquiryStageBreakdown
+                      .filter((b) => b.count > 0)
+                      .map((b, index) => (
+                        <Cell key={b.stage} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                      ))}
+                  </Pie>
+                  <RechartsTooltip />
+                  <Legend />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// -------------------------------------------------------------- Monthly
+
+function MonthlyReport({ data }: { data: MonthlyReportData }) {
+  const { comparison } = data;
+  const rows = [
+    { name: "Leads", current: comparison.current.leads, previous: comparison.previous.leads },
+    { name: "Meetings", current: comparison.current.meetings, previous: comparison.previous.meetings },
+    { name: "Quotes", current: comparison.current.quotes, previous: comparison.previous.quotes },
+    { name: "Wins", current: comparison.current.wins, previous: comparison.previous.wins },
+  ];
+  return (
+    <div className="space-y-6">
+      <p className="text-xs text-muted-foreground">
+        This report always compares the current calendar month to the previous one — the date range
+        picker above does not apply to it.
+      </p>
+      <Card className="rounded-xl">
+        <CardHeader>
+          <CardTitle>This Month vs Last Month</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="h-[350px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={rows} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                <XAxis dataKey="name" />
+                <YAxis allowDecimals={false} />
+                <RechartsTooltip />
+                <Legend />
+                <Bar dataKey="previous" name="Last Month" fill="var(--muted-foreground)" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="current" name="This Month" fill="var(--chart-1)" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ------------------------------------------------------------- shared UI
+
+function StatTile({ title, value }: { title: string; value: string }) {
+  return (
+    <Card className="rounded-xl">
+      <CardContent className="p-6">
+        <div className="text-sm font-medium text-muted-foreground">{title}</div>
+        <div className="text-2xl font-bold mt-2">{value}</div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function EmptyChart() {
+  return (
+    <div className="flex h-[200px] items-center justify-center text-sm text-muted-foreground">
+      No data for this period.
+    </div>
+  );
+}
+
+function toCsvRows(reportData: ReportData | null): CsvRow[] {
+  if (!reportData) return [];
+  switch (reportData.kind) {
+    case "sales":
+      return reportData.data.summary.quotationStatusBreakdown.map((r) => ({
+        Status: r.status,
+        Count: r.count,
+        "Net Value": r.netValue,
+        "Gross Value": r.grossValue,
+      }));
+    case "revenue":
+      return reportData.data.byClient.map((r) => ({
+        Client: r.companyName,
+        "Accepted Quotations": r.acceptedQuotationCount,
+        "Net Revenue": r.netAcceptedRevenue,
+        "Gross Revenue": r.grossAcceptedValue,
+      }));
+    case "executive":
+      return reportData.data.byRepresentative.map((r) => ({
+        Representative: r.name,
+        Email: r.email ?? "",
+        "Accepted Quotations": r.acceptedQuotationCount,
+        "Net Revenue": r.netAcceptedRevenue,
+        "Gross Revenue": r.grossAcceptedValue,
+      }));
+    case "product":
+      return reportData.data.byProduct.map((r) => ({
+        Product: r.productName,
+        Quantity: r.quantity,
+        "Net Revenue": r.netAcceptedRevenue,
+        "Gross Revenue": r.grossAcceptedValue,
+      }));
+    case "pipeline":
+      return reportData.data.summary.enquiryStageBreakdown.map((r) => ({
+        Stage: r.stage,
+        Count: r.count,
+        "Expected Revenue": r.expectedRevenue,
+      }));
+    case "conversion":
+      return reportData.data.summary.enquiryStageBreakdown.map((r) => ({
+        Stage: r.stage,
+        Count: r.count,
+      }));
+    case "monthly":
+      return [
+        { Metric: "Leads", "This Month": reportData.data.comparison.current.leads, "Last Month": reportData.data.comparison.previous.leads },
+        { Metric: "Meetings", "This Month": reportData.data.comparison.current.meetings, "Last Month": reportData.data.comparison.previous.meetings },
+        { Metric: "Quotes", "This Month": reportData.data.comparison.current.quotes, "Last Month": reportData.data.comparison.previous.quotes },
+        { Metric: "Wins", "This Month": reportData.data.comparison.current.wins, "Last Month": reportData.data.comparison.previous.wins },
+      ];
+  }
 }
