@@ -13,6 +13,7 @@ import { FollowUpsModule } from './follow-ups/follow-ups.module';
 import { SalesModule } from './sales/sales.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { AnalyticsModule } from './analytics/analytics.module';
+import { NotificationsModule } from './notifications/notifications.module';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { AnalyticsModule } from './analytics/analytics.module';
     SalesModule,
     DashboardModule,
     AnalyticsModule,
+    NotificationsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

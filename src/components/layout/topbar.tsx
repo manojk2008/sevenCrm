@@ -4,11 +4,11 @@ import React from "react";
 import { useTheme } from "next-themes";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/stores/auth-store";
-import { useNotificationStore } from "@/stores/notification-store";
 import { useCommandPaletteStore } from "@/stores/command-palette-store";
 import { useSidebarStore } from "@/stores/sidebar-store";
-import { Menu, Search, Sun, Moon, Bell, User as UserIcon, LogOut, Settings } from "lucide-react";
+import { Menu, Search, Sun, Moon, User as UserIcon, LogOut, Settings } from "lucide-react";
 import { Breadcrumbs } from "./breadcrumbs";
+import { NotificationBell } from "@/features/notifications/notification-bell";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -24,7 +24,6 @@ export default function Topbar() {
   const { theme, setTheme } = useTheme();
   const router = useRouter();
   const { user, logout } = useAuthStore();
-  const { unreadCount } = useNotificationStore();
   const { open } = useCommandPaletteStore();
   const { toggleMobile, isMobileOpen } = useSidebarStore();
   const [modifierKey, setModifierKey] = React.useState("⌘");
@@ -91,21 +90,10 @@ export default function Topbar() {
           <span className="sr-only">Toggle theme</span>
         </Button>
 
-        {/* Notifications */}
-        <Button variant="ghost" size="icon" className="relative shrink-0">
-          <Bell className="h-5 w-5" />
-          <span className="sr-only">
-            You have {unreadCount} unread notification{unreadCount === 1 ? "" : "s"}
-          </span>
-          {unreadCount > 0 && (
-            <span
-              aria-hidden="true"
-              className="absolute right-0.5 top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[11px] font-medium leading-none text-destructive-foreground"
-            >
-              {unreadCount > 99 ? '99+' : unreadCount}
-            </span>
-          )}
-        </Button>
+        {/* Notifications — real, API-backed (Phase 9). See
+            src/features/notifications/notification-bell.tsx: a stateless
+            recent-events count, never an "unread" claim. */}
+        <NotificationBell />
 
         {/* User Dropdown */}
         <DropdownMenu>

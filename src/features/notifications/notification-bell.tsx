@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Bell, CheckCheck, Clock } from "lucide-react";
+import { Bell, Clock } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -10,64 +10,107 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { formatRelativeTime } from "@/lib/format";
+import { getNotifications, getNotificationsErrorMessage } from "./api";
+import type { Notification } from "@/types/notification";
 
-// Using simple mock data directly for the bell component
-const mockRecentNotifications = [
-  { id: 1, title: "New Enquiry: Globex Inc", time: "5m ago", isRead: false },
-  { id: 2, title: "Deal Won: Acme Corp", time: "1h ago", isRead: false },
-  { id: 3, title: "Follow-up with Rahul due", time: "2h ago", isRead: true },
-  { id: 4, title: "Quotation QT-2024 sent", time: "5h ago", isRead: true },
-];
+const BELL_LIMIT = 5;
 
 export function NotificationBell() {
-  const [notifications, setNotifications] = useState(mockRecentNotifications);
-  
-  const unreadCount = notifications.filter(n => !n.isRead).length;
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState("");
+  const [hasLoaded, setHasLoaded] = useState(false);
 
-  const markAllAsRead = () => {
-    setNotifications(notifications.map(n => ({ ...n, isRead: true })));
-  };
+  // Loaded once, on mount — this is a stateless feed (Phase 9: no read/
+  // unread persistence), so there is nothing to keep in sync while the
+  // popover is closed, only while the app is open.
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      setIsLoading(true);
+      try {
+        const result = await getNotifications(BELL_LIMIT);
+        if (cancelled) return;
+        setNotifications(result);
+        setErrorMessage("");
+      } catch (error) {
+        if (cancelled) return;
+        setErrorMessage(getNotificationsErrorMessage(error));
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+          setHasLoaded(true);
+        }
+      }
+    }
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // A count of recent events, not an "unread" count — there is no
+  // read/unread state in this phase (Phase 9 decision D2).
+  const recentCount = notifications.length;
 
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button variant="ghost" size="icon" aria-label="Notifications" className="relative rounded-full">
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label={recentCount > 0 ? `Notifications, ${recentCount} recent` : "Notifications"}
+          className="relative rounded-full"
+        >
           <Bell className="h-5 w-5 text-muted-foreground" />
-          {unreadCount > 0 && (
-            <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-destructive ring-2 ring-background" />
+          {hasLoaded && recentCount > 0 && (
+            <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-medium text-primary-foreground ring-2 ring-background">
+              {recentCount}
+            </span>
           )}
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-80 p-0 rounded-xl overflow-hidden shadow-lg border-border/50">
         <div className="flex items-center justify-between p-4 border-b bg-muted/30">
-          <h3 className="font-semibold text-sm">Notifications</h3>
-          {unreadCount > 0 && (
-            <Button variant="ghost" size="sm" className="h-auto p-0 text-xs text-primary hover:bg-transparent" onClick={markAllAsRead}>
-              <CheckCheck className="mr-1 h-3 w-3" /> Mark all read
-            </Button>
-          )}
+          <h3 className="font-semibold text-sm">Recent Activity</h3>
         </div>
         <div className="max-h-[300px] overflow-y-auto">
-          {notifications.length === 0 ? (
+          {isLoading ? (
+            <div className="space-y-2 p-4">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="h-12 animate-pulse rounded-lg bg-muted/50" />
+              ))}
+            </div>
+          ) : errorMessage ? (
+            <div className="p-8 text-center text-sm text-muted-foreground">{errorMessage}</div>
+          ) : notifications.length === 0 ? (
             <div className="p-8 text-center text-sm text-muted-foreground">
-              No new notifications
+              No recent activity
             </div>
           ) : (
             <div className="divide-y divide-border/50">
-              {notifications.map((notif) => (
-                <div key={notif.id} className={`p-4 flex gap-3 hover:bg-muted/50 cursor-pointer transition-colors ${!notif.isRead ? 'bg-primary/5' : ''}`}>
-                  <div className={`mt-0.5 w-2 h-2 rounded-full shrink-0 ${notif.isRead ? 'bg-transparent' : 'bg-primary shadow-[0_0_5px_rgba(var(--primary),0.5)]'}`} />
-                  <div className="space-y-1 flex-1">
-                    <p className={`text-sm ${notif.isRead ? 'text-muted-foreground' : 'font-medium text-foreground'}`}>
-                      {notif.title}
-                    </p>
+              {notifications.map((notif) => {
+                const body = (
+                  <>
+                    <p className="text-sm font-medium text-foreground">{notif.title}</p>
+                    <p className="text-xs text-muted-foreground line-clamp-1">{notif.description}</p>
                     <div className="flex items-center text-xs text-muted-foreground">
                       <Clock className="mr-1 h-3 w-3" />
-                      {notif.time}
+                      {formatRelativeTime(notif.timestamp)}
                     </div>
-                  </div>
-                </div>
-              ))}
+                  </>
+                );
+                return (
+                  <Link
+                    key={notif.id}
+                    href={notif.href}
+                    className="block p-4 space-y-1 hover:bg-muted/50 transition-colors"
+                  >
+                    {body}
+                  </Link>
+                );
+              })}
             </div>
           )}
         </div>
