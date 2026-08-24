@@ -14,6 +14,7 @@ import { SalesModule } from './sales/sales.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { SearchModule } from './search/search.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { NotificationsModule } from './notifications/notifications.module';
     DashboardModule,
     AnalyticsModule,
     NotificationsModule,
+    SearchModule,
   ],
   controllers: [AppController],
   providers: [AppService],
