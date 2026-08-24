@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState, useMemo } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Download,
@@ -12,6 +13,7 @@ import {
   Eye,
   Edit,
   Trash,
+  RotateCcw,
   Building2,
   Mail,
   Phone,
@@ -21,15 +23,14 @@ import {
 import {
   flexRender,
   getCoreRowModel,
-  getFilteredRowModel,
-  getPaginationRowModel,
-  getSortedRowModel,
   useReactTable,
 } from '@tanstack/react-table';
-import type { ColumnDef, SortingState, ColumnFiltersState } from '@tanstack/react-table';
+import type { ColumnDef } from '@tanstack/react-table';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Table,
   TableBody,
@@ -59,75 +60,86 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { ErrorState } from '@/components/shared/error-state';
+import { TableSkeleton } from '@/components/shared/skeleton-loader';
 import { ClientForm } from './client-form';
-import type { ClientRecord } from './client-form';
-import { clients as clientFixtures } from '@/data/clients';
+import type { ClientRecord, ClientFormValues } from './client-form';
+import { listClients, saveClientForm, updateClientStatus, getClientErrorMessage } from './api';
+import { ApiError } from '@/lib/api';
+import { useAuthStore } from '@/stores/auth-store';
 import { toast } from 'sonner';
-import { formatCurrency, getInitials } from '@/lib/format';
+import { formatCurrency, formatRelativeTime, getInitials } from '@/lib/format';
 
-const formatRelativeTime = (dateStr: string) => {
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-  if (days === 0) return 'Today';
-  if (days === 1) return 'Yesterday';
-  if (days < 30) return `${days} days ago`;
-  return `${Math.floor(days / 30)} months ago`;
-};
+type StatusFilter = 'all' | 'active' | 'inactive';
+type LoadState = 'loading' | 'error' | 'ready';
 
-type ClientFixture = {
-  id: string;
-  name?: string;
-  companyName?: string;
-  contacts?: Array<{ name?: string; email?: string; phone?: string; designation?: string; isPrimary?: boolean }>;
-  addresses?: Array<{ street?: string; line1?: string; city?: string; state?: string; pincode?: string; country?: string; isPrimary?: boolean }>;
-  industries?: string[];
-  industry?: string;
-  email?: string;
-  phone?: string;
-  website?: string;
-  gstNumber?: string;
-  status?: string;
-  tags?: string[];
-  totalRevenue?: number;
-  revenue?: number;
-  updatedAt?: string;
-  notes?: string;
-};
-
-const initialClients: ClientRecord[] = (clientFixtures as unknown as ClientFixture[]).map((client) => {
-  const primary = client.contacts?.find((contact) => contact.isPrimary) ?? client.contacts?.[0] ?? {};
-  const address = client.addresses?.find((item) => item.isPrimary) ?? client.addresses?.[0] ?? {};
-  return {
-    id: String(client.id),
-    name: client.name ?? client.companyName ?? "",
-    contactperson: primary.name ?? "",
-    industry: client.industries?.[0] ?? client.industry ?? "Other",
-    email: primary.email ?? client.email ?? "",
-    phone: primary.phone ?? client.phone ?? "",
-    website: client.website ?? "",
-    gstNumber: client.gstNumber ?? "",
-    status: client.status === "inactive" ? "inactive" : "active",
-    tags: client.tags ?? [],
-    revenue: client.totalRevenue ?? client.revenue ?? 0,
-    lastActivity: client.updatedAt ?? new Date().toISOString(),
-    primaryContact: { name: primary.name ?? "", email: primary.email ?? "", phone: primary.phone ?? "", designation: primary.designation ?? "" },
-    address: { line1: address.street ?? address.line1 ?? "", city: address.city ?? "", state: address.state ?? "", pincode: address.pincode ?? "", country: address.country ?? "India" },
-    notes: client.notes ?? "",
-  };
-});
+const PAGE_SIZE = 10;
 
 export function ClientsContent() {
-  const [data, setData] = useState<ClientRecord[]>(initialClients);
+  const router = useRouter();
+  const logout = useAuthStore((state) => state.logout);
+
+  const [clients, setClients] = useState<ClientRecord[]>([]);
+  const [loadState, setLoadState] = useState<LoadState>('loading');
+  const [loadErrorMessage, setLoadErrorMessage] = useState('');
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+
+  const [searchInput, setSearchInput] = useState('');
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('active');
+
   const [view, setView] = useState<'table' | 'grid'>('table');
-  const [sorting, setSorting] = useState<SortingState>([]);
-  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([{ id: 'status', value: 'active' }]);
   const [rowSelection, setRowSelection] = useState({});
-  const [globalFilter, setGlobalFilter] = useState('');
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingClient, setEditingClient] = useState<ClientRecord | undefined>(undefined);
-  const [clientToDelete, setClientToDelete] = useState<ClientRecord | null>(null);
+  const [clientToDeactivate, setClientToDeactivate] = useState<ClientRecord | null>(null);
+  const [churnReasonInput, setChurnReasonInput] = useState('');
+  const [isDeactivating, setIsDeactivating] = useState(false);
 
-  const columns: ColumnDef<ClientRecord>[] = useMemo(() => [
+  // A 401 means the session is gone — the backend is authoritative, so we
+  // clear local state and send the user back to login rather than leaving a
+  // stale "authenticated" UI showing (mirrors users-content.tsx).
+  const handleUnauthorized = useCallback(() => {
+    logout();
+    router.replace('/login');
+  }, [logout, router]);
+
+  const loadClients = useCallback(async () => {
+    setLoadState('loading');
+    try {
+      const result = await listClients({ search, status: statusFilter, page, pageSize: PAGE_SIZE });
+      setClients(result.data);
+      setTotal(result.total);
+      setTotalPages(result.totalPages);
+      setLoadState('ready');
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        handleUnauthorized();
+        return;
+      }
+      setLoadErrorMessage(getClientErrorMessage(error));
+      setLoadState('error');
+    }
+  }, [search, statusFilter, page, handleUnauthorized]);
+
+  useEffect(() => {
+    loadClients();
+  }, [loadClients]);
+
+  // Debounce free-text search before it drives a request.
+  useEffect(() => {
+    const handle = setTimeout(() => setSearch(searchInput.trim()), 400);
+    return () => clearTimeout(handle);
+  }, [searchInput]);
+
+  // A new search/filter always starts back at page 1.
+  useEffect(() => {
+    setPage(1);
+  }, [search, statusFilter]);
+
+  const columns: ColumnDef<ClientRecord>[] = [
     {
       id: 'select',
       header: ({ table }) => (
@@ -154,14 +166,14 @@ export function ClientsContent() {
         const client = row.original;
         return (
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-sm">
+            <div className="w-10 h-10 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-sm">
               {getInitials(client.name)}
             </div>
             <div>
-              <Link href={`/clients/${client.id}`} className="font-medium text-gray-900 hover:text-indigo-600 transition-colors">
+              <Link href={`/clients/${client.id}`} className="font-medium text-foreground hover:text-primary transition-colors">
                 {client.name}
               </Link>
-              <div className="text-xs text-gray-500 mt-0.5">{client.contactperson}</div>
+              <div className="text-xs text-muted-foreground mt-0.5">{client.contactperson}</div>
             </div>
           </div>
         );
@@ -174,8 +186,8 @@ export function ClientsContent() {
         const client = row.original;
         return (
           <div>
-            <div className="text-sm font-medium text-gray-900">{client.primaryContact?.name || 'N/A'}</div>
-            <div className="text-xs text-gray-500">{client.primaryContact?.email || 'N/A'}</div>
+            <div className="text-sm font-medium text-foreground">{client.primaryContact?.name || 'N/A'}</div>
+            <div className="text-xs text-muted-foreground">{client.primaryContact?.email || 'N/A'}</div>
           </div>
         );
       }
@@ -183,7 +195,7 @@ export function ClientsContent() {
     {
       accessorKey: 'phone',
       header: 'Phone',
-      cell: ({ row }) => <span className="text-sm text-gray-600">{row.original.phone}</span>
+      cell: ({ row }) => <span className="text-sm text-muted-foreground">{row.original.phone}</span>
     },
     {
       accessorKey: 'tags',
@@ -193,9 +205,9 @@ export function ClientsContent() {
         return (
           <div className="flex flex-wrap gap-1">
             {tags.slice(0, 2).map((tag: string) => (
-              <Badge key={tag} variant="secondary" className="text-[10px] px-1.5 py-0">{tag}</Badge>
+              <Badge key={tag} variant="secondary" className="text-[11px] px-1.5 py-0">{tag}</Badge>
             ))}
-            {tags.length > 2 && <Badge variant="outline" className="text-[10px] px-1.5 py-0">+{tags.length - 2}</Badge>}
+            {tags.length > 2 && <Badge variant="outline" className="text-[11px] px-1.5 py-0">+{tags.length - 2}</Badge>}
           </div>
         );
       }
@@ -215,17 +227,18 @@ export function ClientsContent() {
     {
       accessorKey: 'revenue',
       header: () => <div className="text-right">Revenue</div>,
-      cell: ({ row }) => <div className="text-right font-medium text-gray-900">{formatCurrency(row.original.revenue || 0)}</div>
+      cell: ({ row }) => <div className="text-right font-medium text-foreground">{formatCurrency(row.original.revenue || 0)}</div>
     },
     {
       accessorKey: 'lastActivity',
       header: 'Last Activity',
-      cell: ({ row }) => <span className="text-sm text-gray-500">{formatRelativeTime(row.original.lastActivity)}</span>
+      cell: ({ row }) => <span className="text-sm text-muted-foreground">{formatRelativeTime(row.original.lastActivity)}</span>
     },
     {
       id: 'actions',
       cell: ({ row }) => {
         const client = row.original;
+        const isActive = client.status === 'active';
         return (
           <DropdownMenu>
             <DropdownMenuTrigger
@@ -249,51 +262,87 @@ export function ClientsContent() {
                 <Edit className="mr-2 h-4 w-4" /> Edit Client
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem className="text-red-600" onClick={() => setClientToDelete(client)}>
-                <Trash className="mr-2 h-4 w-4" /> Delete Client
-              </DropdownMenuItem>
+              {isActive ? (
+                <DropdownMenuItem className="text-destructive" onClick={() => { setClientToDeactivate(client); setChurnReasonInput(''); }}>
+                  <Trash className="mr-2 h-4 w-4" /> Deactivate Client
+                </DropdownMenuItem>
+              ) : (
+                <DropdownMenuItem onClick={() => handleReactivate(client)}>
+                  <RotateCcw className="mr-2 h-4 w-4" /> Reactivate Client
+                </DropdownMenuItem>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         );
       },
     },
-  ], []);
+  ];
 
   const table = useReactTable({
-    data,
+    data: clients,
     columns,
     getCoreRowModel: getCoreRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    onSortingChange: setSorting,
-    onColumnFiltersChange: setColumnFilters,
     onRowSelectionChange: setRowSelection,
     state: {
-      sorting,
-      columnFilters,
       rowSelection,
-      globalFilter,
     },
-    onGlobalFilterChange: setGlobalFilter,
   });
 
   const selectedRows = table.getFilteredSelectedRowModel().rows;
 
+  const handleFormSubmit = async (values: ClientFormValues) => {
+    await saveClientForm(values, editingClient, (message) => toast.warning(message));
+    await loadClients();
+  };
+
+  const handleReactivate = async (targetClient: ClientRecord) => {
+    try {
+      await updateClientStatus(targetClient.id, 'active');
+      toast.success(`${targetClient.name} has been reactivated`);
+      await loadClients();
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        handleUnauthorized();
+        return;
+      }
+      toast.error(getClientErrorMessage(error));
+    }
+  };
+
+  const handleDeactivate = async () => {
+    if (!clientToDeactivate || !churnReasonInput.trim()) return;
+    setIsDeactivating(true);
+    try {
+      await updateClientStatus(clientToDeactivate.id, 'inactive', churnReasonInput.trim());
+      toast.success(`${clientToDeactivate.name} has been deactivated`);
+      setClientToDeactivate(null);
+      setChurnReasonInput('');
+      await loadClients();
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        handleUnauthorized();
+        return;
+      }
+      toast.error(getClientErrorMessage(error));
+    } finally {
+      setIsDeactivating(false);
+    }
+  };
+
   return (
-    <div className="flex-1 space-y-6 p-6 md:p-8 pt-6">
+    <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-gray-900">Clients</h1>
-          <p className="text-sm text-gray-500 mt-1">Manage your client portfolio and relationships.</p>
+          <h1 className="text-3xl font-bold tracking-tight">Clients</h1>
+          <p className="text-sm text-muted-foreground mt-1">Manage your client portfolio and relationships.</p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={() => toast.success("Client export is ready")}>
             <Download className="mr-2 h-4 w-4" />
             Export
           </Button>
-          <Button size="sm" onClick={() => { setEditingClient(undefined); setIsFormOpen(true); }} className="bg-indigo-600 hover:bg-indigo-700">
+          <Button size="sm" onClick={() => { setEditingClient(undefined); setIsFormOpen(true); }} className="bg-primary hover:bg-primary/90">
             <Plus className="mr-2 h-4 w-4" />
             Add Client
           </Button>
@@ -301,19 +350,19 @@ export function ClientsContent() {
       </div>
 
       {/* Controls */}
-      <div className="flex flex-col sm:flex-row gap-4 items-center justify-between bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
+      <div className="flex flex-col sm:flex-row gap-4 items-center justify-between bg-card p-4 rounded-xl shadow-sm border border-border">
         <div className="flex items-center gap-4 w-full sm:w-auto">
           <div className="relative w-full sm:w-72">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-500" />
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
               placeholder="Search clients..."
-              className="pl-9 bg-gray-50/50 border-gray-200 focus-visible:ring-indigo-500"
-              value={globalFilter ?? ''}
-              onChange={(e) => setGlobalFilter(e.target.value)}
+              className="pl-9 bg-muted/40 border-border focus-visible:ring-ring"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
             />
           </div>
-          <Select defaultValue="active" onValueChange={(v) => table.getColumn('status')?.setFilterValue(v === 'all' ? '' : v)}>
-            <SelectTrigger className="w-[140px] bg-gray-50/50 border-gray-200">
+          <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as StatusFilter)}>
+            <SelectTrigger className="w-[140px] bg-muted/40 border-border">
               <SelectValue placeholder="Status" />
             </SelectTrigger>
             <SelectContent>
@@ -324,12 +373,14 @@ export function ClientsContent() {
           </Select>
         </div>
 
-        <div className="flex items-center gap-2 border bg-gray-50 rounded-lg p-1">
+        <div className="flex items-center gap-2 border bg-muted/40 rounded-lg p-1">
           <Button
             variant="ghost"
             size="sm"
             onClick={() => setView('table')}
-            className={cn("h-8 px-2 rounded-md", view === 'table' ? "bg-white shadow-sm text-indigo-600" : "text-gray-500")}
+            aria-label="Table view"
+            aria-pressed={view === 'table'}
+            className={cn("h-8 px-2 rounded-md", view === 'table' ? "bg-card shadow-sm text-primary" : "text-muted-foreground")}
           >
             <LayoutList className="h-4 w-4" />
           </Button>
@@ -337,7 +388,9 @@ export function ClientsContent() {
             variant="ghost"
             size="sm"
             onClick={() => setView('grid')}
-            className={cn("h-8 px-2 rounded-md", view === 'grid' ? "bg-white shadow-sm text-indigo-600" : "text-gray-500")}
+            aria-label="Grid view"
+            aria-pressed={view === 'grid'}
+            className={cn("h-8 px-2 rounded-md", view === 'grid' ? "bg-card shadow-sm text-primary" : "text-muted-foreground")}
           >
             <LayoutGrid className="h-4 w-4" />
           </Button>
@@ -351,22 +404,21 @@ export function ClientsContent() {
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
-            className="bg-indigo-50 border border-indigo-100 rounded-lg p-3 flex items-center justify-between"
+            className="bg-primary/10 border border-primary/20 rounded-lg p-3 flex items-center justify-between"
           >
-            <span className="text-sm font-medium text-indigo-800">
+            <span className="text-sm font-medium text-primary">
               {selectedRows.length} client{selectedRows.length > 1 ? 's' : ''} selected
             </span>
             <div className="flex gap-2">
-              <Button variant="outline" size="sm" className="bg-white border-indigo-200 text-indigo-700 hover:bg-indigo-50" onClick={() => toast.success("Selected clients exported")}>
+              <Button variant="outline" size="sm" className="bg-card border-primary/30 text-primary hover:bg-primary/10" onClick={() => toast.success("Selected clients exported")}>
                 Export Selected
               </Button>
-              <Button variant="destructive" size="sm" onClick={() => {
-                const ids = new Set(selectedRows.map((row) => row.original.id));
-                setData((records) => records.filter((record) => !ids.has(record.id)));
-                table.resetRowSelection();
-                toast.success("Selected clients deleted");
-              }}>
-                Delete Selected
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => toast.info("Deactivate clients one at a time so a reason can be recorded for each.")}
+              >
+                Deactivate Selected
               </Button>
             </div>
           </motion.div>
@@ -374,15 +426,21 @@ export function ClientsContent() {
       </AnimatePresence>
 
       {/* Content */}
-      {view === 'table' ? (
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden flex flex-col min-h-[500px]">
+      {loadState === 'loading' && <TableSkeleton rows={PAGE_SIZE} />}
+
+      {loadState === 'error' && (
+        <ErrorState title="Couldn't load clients" description={loadErrorMessage} onRetry={loadClients} />
+      )}
+
+      {loadState === 'ready' && (view === 'table' ? (
+        <div className="bg-card rounded-xl shadow-sm border border-border overflow-hidden flex flex-col min-h-[500px]">
           <div className="overflow-x-auto flex-1">
             <Table>
-              <TableHeader className="bg-gray-50/50">
+              <TableHeader className="bg-muted/40">
                 {table.getHeaderGroups().map((headerGroup) => (
                   <TableRow key={headerGroup.id}>
                     {headerGroup.headers.map((header) => (
-                      <TableHead key={header.id} className="text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <TableHead key={header.id} className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
                         {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
                       </TableHead>
                     ))}
@@ -392,7 +450,7 @@ export function ClientsContent() {
               <TableBody>
                 {table.getRowModel().rows?.length ? (
                   table.getRowModel().rows.map((row) => (
-                    <TableRow key={row.id} data-state={row.getIsSelected() && "selected"} className="hover:bg-gray-50/50">
+                    <TableRow key={row.id} data-state={row.getIsSelected() && "selected"} className="hover:bg-muted/40">
                       {row.getVisibleCells().map((cell) => (
                         <TableCell key={cell.id}>
                           {flexRender(cell.column.columnDef.cell, cell.getContext())}
@@ -403,11 +461,11 @@ export function ClientsContent() {
                 ) : (
                   <TableRow>
                     <TableCell colSpan={columns.length} className="h-64 text-center">
-                      <div className="flex flex-col items-center justify-center text-gray-500">
-                        <Building2 className="h-10 w-10 text-gray-300 mb-3" />
-                        <p className="text-base font-medium text-gray-900">No clients found</p>
+                      <div className="flex flex-col items-center justify-center text-muted-foreground">
+                        <Building2 className="h-10 w-10 text-muted-foreground/50 mb-3" />
+                        <p className="text-base font-medium text-foreground">No clients found</p>
                         <p className="text-sm mb-4">We couldn&apos;t find any clients matching your criteria.</p>
-                        <Button size="sm" onClick={() => { setEditingClient(undefined); setIsFormOpen(true); }} className="bg-indigo-600 hover:bg-indigo-700">
+                        <Button size="sm" onClick={() => { setEditingClient(undefined); setIsFormOpen(true); }} className="bg-primary hover:bg-primary/90">
                           <Plus className="mr-2 h-4 w-4" /> Add Client
                         </Button>
                       </div>
@@ -417,24 +475,24 @@ export function ClientsContent() {
               </TableBody>
             </Table>
           </div>
-          <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100">
-            <div className="text-sm text-gray-500">
-              Showing {table.getRowModel().rows.length} of {data.length} results
+          <div className="flex items-center justify-between px-4 py-3 border-t border-border">
+            <div className="text-sm text-muted-foreground">
+              Showing {clients.length} of {total} results
             </div>
             <div className="flex items-center gap-2">
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => table.previousPage()}
-                disabled={!table.getCanPreviousPage()}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page <= 1}
               >
                 Previous
               </Button>
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => table.nextPage()}
-                disabled={!table.getCanNextPage()}
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page >= totalPages}
               >
                 Next
               </Button>
@@ -451,7 +509,7 @@ export function ClientsContent() {
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 key={client.id}
-                className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 hover:shadow-md transition-shadow group relative flex flex-col h-full"
+                className="bg-card rounded-xl p-6 shadow-sm border border-border hover:shadow-md transition-shadow group relative flex flex-col h-full"
               >
                 <div className="absolute top-4 right-4">
                   <DropdownMenu>
@@ -478,17 +536,17 @@ export function ClientsContent() {
                 </div>
 
                 <div className="flex items-start gap-4 mb-4">
-                  <div className="w-12 h-12 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-lg shrink-0">
+                  <div className="w-12 h-12 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-lg shrink-0">
                     {getInitials(client.name)}
                   </div>
                   <div>
-                    <Link href={`/clients/${client.id}`} className="font-semibold text-gray-900 hover:text-indigo-600 truncate block">
+                    <Link href={`/clients/${client.id}`} className="font-semibold text-foreground hover:text-primary truncate block">
                       {client.name}
                     </Link>
                     <div className="flex items-center gap-2 mt-1">
-                      <span className="text-xs text-gray-500">{client.contactperson}</span>
-                      <span className="w-1 h-1 rounded-full bg-gray-300" />
-                      <Badge variant={client.status === 'active' ? "success" : "secondary"} className="text-[10px] px-1.5 py-0 capitalize">
+                      <span className="text-xs text-muted-foreground">{client.contactperson}</span>
+                      <span className="w-1 h-1 rounded-full bg-border" />
+                      <Badge variant={client.status === 'active' ? "success" : "secondary"} className="text-[11px] px-1.5 py-0 capitalize">
                         {client.status}
                       </Badge>
                     </div>
@@ -496,82 +554,82 @@ export function ClientsContent() {
                 </div>
 
                 <div className="space-y-3 mb-4">
-                  <div className="flex items-center text-sm text-gray-600">
-                    <CheckSquare className="w-4 h-4 mr-2 text-gray-400" />
+                  <div className="flex items-center text-sm text-muted-foreground">
+                    <CheckSquare className="w-4 h-4 mr-2 text-muted-foreground" />
                     {client.primaryContact?.name || 'No primary contact'}
                   </div>
-                  <div className="flex items-center text-sm text-gray-600">
-                    <Mail className="w-4 h-4 mr-2 text-gray-400" />
+                  <div className="flex items-center text-sm text-muted-foreground">
+                    <Mail className="w-4 h-4 mr-2 text-muted-foreground" />
                     {client.primaryContact?.email || 'N/A'}
                   </div>
-                  <div className="flex items-center text-sm text-gray-600">
-                    <Phone className="w-4 h-4 mr-2 text-gray-400" />
+                  <div className="flex items-center text-sm text-muted-foreground">
+                    <Phone className="w-4 h-4 mr-2 text-muted-foreground" />
                     {client.phone}
                   </div>
                 </div>
 
-                <div className="pt-4 mt-auto border-t border-gray-100 flex items-center justify-between">
+                <div className="pt-4 mt-auto border-t border-border flex items-center justify-between">
                   <div>
-                    <p className="text-xs text-gray-500 mb-0.5">Revenue</p>
-                    <p className="font-semibold text-gray-900">{formatCurrency(client.revenue || 0)}</p>
+                    <p className="text-xs text-muted-foreground mb-0.5">Revenue</p>
+                    <p className="font-semibold text-foreground">{formatCurrency(client.revenue || 0)}</p>
                   </div>
                   <div className="flex flex-wrap gap-1 justify-end max-w-[50%]">
                     {client.tags?.slice(0, 2).map((tag: string) => (
-                      <Badge key={tag} variant="outline" className="text-[10px] px-1.5 py-0">{tag}</Badge>
+                      <Badge key={tag} variant="outline" className="text-[11px] px-1.5 py-0">{tag}</Badge>
                     ))}
                   </div>
                 </div>
               </motion.div>
             );
           })}
-          {table.getRowModel().rows.length === 0 && (
-            <div className="col-span-full py-16 text-center bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center">
-              <Building2 className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-              <p className="text-lg font-medium text-gray-900">No clients found</p>
-              <p className="text-sm text-gray-500 mb-6">We couldn&apos;t find any clients matching your criteria.</p>
-              <Button onClick={() => { setEditingClient(undefined); setIsFormOpen(true); }} className="bg-indigo-600 hover:bg-indigo-700">
+          {clients.length === 0 && (
+            <div className="col-span-full py-16 text-center bg-card rounded-xl shadow-sm border border-border flex flex-col items-center">
+              <Building2 className="h-12 w-12 text-muted-foreground/50 mx-auto mb-4" />
+              <p className="text-lg font-medium text-foreground">No clients found</p>
+              <p className="text-sm text-muted-foreground mb-6">We couldn&apos;t find any clients matching your criteria.</p>
+              <Button onClick={() => { setEditingClient(undefined); setIsFormOpen(true); }} className="bg-primary hover:bg-primary/90">
                 <Plus className="mr-2 h-4 w-4" /> Add Client
               </Button>
             </div>
           )}
         </div>
-      )}
+      ))}
 
       {/* Form Sheet */}
       <ClientForm
         open={isFormOpen}
         onOpenChange={setIsFormOpen}
         client={editingClient}
-        onSubmit={(data) => {
-          setData((records) => {
-            const exists = records.some((record) => record.id === data.id);
-            return exists ? records.map((record) => record.id === data.id ? data : record) : [data, ...records];
-          });
-        }}
+        onSubmit={handleFormSubmit}
       />
 
-      {/* Delete Confirmation */}
-      <AlertDialog open={!!clientToDelete} onOpenChange={(open) => !open && setClientToDelete(null)}>
+      {/* Deactivate Confirmation */}
+      <AlertDialog open={!!clientToDeactivate} onOpenChange={(open) => !open && !isDeactivating && setClientToDeactivate(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+            <AlertDialogTitle>Deactivate this client?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete the client record for <strong>{clientToDelete?.name}</strong> and remove all associated data from our servers.
+              This will mark <strong>{clientToDeactivate?.name}</strong> as inactive. You can reactivate them later from this page or the client&apos;s detail page.
             </AlertDialogDescription>
           </AlertDialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="deactivate-reason">Reason for deactivation *</Label>
+            <Textarea
+              id="deactivate-reason"
+              value={churnReasonInput}
+              onChange={(e) => setChurnReasonInput(e.target.value)}
+              placeholder="Why is this client being deactivated?"
+              disabled={isDeactivating}
+            />
+          </div>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={isDeactivating}>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
-              onClick={() => {
-                if (clientToDelete) {
-                  setData((records) => records.filter((record) => record.id !== clientToDelete.id));
-                  toast.success("Client deleted successfully");
-                }
-                setClientToDelete(null);
-              }}
+              className="bg-destructive hover:bg-destructive/90 focus:ring-destructive"
+              disabled={!churnReasonInput.trim() || isDeactivating}
+              onClick={handleDeactivate}
             >
-              Delete
+              {isDeactivating ? "Deactivating…" : "Deactivate"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

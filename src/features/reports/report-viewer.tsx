@@ -55,7 +55,15 @@ const executiveData = [
   { name: "Neha Singh", deals: 156, revenue: 6100000, rate: 35, cycle: 15 },
 ];
 
-const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#8884d8"];
+// Categorical series colours. These were the Recharts documentation defaults;
+// they now come from the app's chart ramp so they follow the active theme.
+const COLORS = [
+  "var(--chart-1)",
+  "var(--chart-2)",
+  "var(--chart-3)",
+  "var(--chart-4)",
+  "var(--chart-5)",
+];
 
 interface ReportViewerProps {
   type: string;
@@ -78,25 +86,25 @@ export function ReportViewer({ type }: ReportViewerProps) {
   const renderSalesChart = () => (
     <div className="space-y-6">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card className="rounded-2xl">
+        <Card className="rounded-xl">
           <CardContent className="p-6">
             <div className="text-sm font-medium text-muted-foreground">Total Revenue</div>
             <div className="text-2xl font-bold mt-2">{formatCurrency(31900000)}</div>
           </CardContent>
         </Card>
-        <Card className="rounded-2xl">
+        <Card className="rounded-xl">
           <CardContent className="p-6">
             <div className="text-sm font-medium text-muted-foreground">Avg Deal Size</div>
             <div className="text-2xl font-bold mt-2">{formatCurrency(39875)}</div>
           </CardContent>
         </Card>
-        <Card className="rounded-2xl">
+        <Card className="rounded-xl">
           <CardContent className="p-6">
             <div className="text-sm font-medium text-muted-foreground">Best Month</div>
             <div className="text-2xl font-bold mt-2">December</div>
           </CardContent>
         </Card>
-        <Card className="rounded-2xl">
+        <Card className="rounded-xl">
           <CardContent className="p-6">
             <div className="text-sm font-medium text-muted-foreground">Total Deals Won</div>
             <div className="text-2xl font-bold mt-2">801</div>
@@ -104,7 +112,7 @@ export function ReportViewer({ type }: ReportViewerProps) {
         </Card>
       </div>
 
-      <Card className="rounded-2xl">
+      <Card className="rounded-xl">
         <CardHeader>
           <CardTitle>Monthly Revenue Trend</CardTitle>
         </CardHeader>
@@ -112,22 +120,22 @@ export function ReportViewer({ type }: ReportViewerProps) {
           <div className="h-[400px] w-full">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={salesData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
-                <XAxis dataKey="name" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
-                <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => `₹${value / 100000}L`} />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
+                <XAxis dataKey="name" stroke="var(--muted-foreground)" fontSize={12} tickLine={false} axisLine={false} />
+                <YAxis stroke="var(--muted-foreground)" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => `₹${value / 100000}L`} />
                 <RechartsTooltip 
-                  cursor={{fill: 'hsl(var(--muted))', opacity: 0.2}}
-                  contentStyle={{borderRadius: '8px', border: '1px solid hsl(var(--border))'}}
+                  cursor={{fill: 'var(--muted)', opacity: 0.2}}
+                  contentStyle={{borderRadius: '8px', border: '1px solid var(--border)'}}
                   formatter={(value) => formatCurrency(typeof value === 'number' ? value : Number(value ?? 0))}
                 />
-                <Bar dataKey="revenue" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="revenue" fill="var(--primary)" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
         </CardContent>
       </Card>
 
-      <Card className="rounded-2xl">
+      <Card className="rounded-xl">
         <CardHeader>
           <CardTitle>Sales Data Table</CardTitle>
         </CardHeader>
@@ -161,7 +169,7 @@ export function ReportViewer({ type }: ReportViewerProps) {
 
   const renderRevenueChart = () => (
     <div className="space-y-6">
-      <Card className="rounded-2xl">
+      <Card className="rounded-xl">
         <CardHeader>
           <CardTitle>Cumulative Revenue</CardTitle>
         </CardHeader>
@@ -171,15 +179,15 @@ export function ReportViewer({ type }: ReportViewerProps) {
               <AreaChart data={salesData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
                 <defs>
                   <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.8}/>
-                    <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0}/>
+                    <stop offset="5%" stopColor="var(--primary)" stopOpacity={0.8}/>
+                    <stop offset="95%" stopColor="var(--primary)" stopOpacity={0}/>
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                 <XAxis dataKey="name" />
                 <YAxis tickFormatter={(val) => `₹${val/100000}L`} />
                 <RechartsTooltip formatter={(value) => formatCurrency(typeof value === 'number' ? value : Number(value ?? 0))}/>
-                <Area type="monotone" dataKey="revenue" stroke="hsl(var(--primary))" fillOpacity={1} fill="url(#colorRevenue)" />
+                <Area type="monotone" dataKey="revenue" stroke="var(--primary)" fillOpacity={1} fill="url(#colorRevenue)" />
               </AreaChart>
             </ResponsiveContainer>
           </div>
@@ -187,7 +195,7 @@ export function ReportViewer({ type }: ReportViewerProps) {
       </Card>
 
       <div className="grid md:grid-cols-2 gap-6">
-        <Card className="rounded-2xl">
+        <Card className="rounded-xl">
           <CardHeader>
             <CardTitle>Top Clients by Revenue</CardTitle>
           </CardHeader>
@@ -199,14 +207,14 @@ export function ReportViewer({ type }: ReportViewerProps) {
                   <XAxis type="number" tickFormatter={(val) => `₹${val/100000}L`} />
                   <YAxis dataKey="name" type="category" width={80} />
                   <RechartsTooltip formatter={(value) => formatCurrency(typeof value === 'number' ? value : Number(value ?? 0))} />
-                  <Bar dataKey="value" fill="hsl(var(--chart-2))" radius={[0, 4, 4, 0]} />
+                  <Bar dataKey="value" fill="var(--chart-2)" radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
           </CardContent>
         </Card>
         
-        <Card className="rounded-2xl">
+        <Card className="rounded-xl">
           <CardHeader>
             <CardTitle>Revenue by Product</CardTitle>
           </CardHeader>
@@ -242,7 +250,7 @@ export function ReportViewer({ type }: ReportViewerProps) {
     <div className="space-y-6">
       <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
         {executiveData.map((exec, i) => (
-          <Card key={exec.name} className="rounded-2xl">
+          <Card key={exec.name} className="rounded-xl">
             <CardContent className="p-6">
               <div className="flex justify-between items-start">
                 <div>
@@ -264,7 +272,7 @@ export function ReportViewer({ type }: ReportViewerProps) {
         ))}
       </div>
 
-      <Card className="rounded-2xl">
+      <Card className="rounded-xl">
         <CardHeader>
           <CardTitle>Executive Performance Comparison</CardTitle>
         </CardHeader>
@@ -278,8 +286,8 @@ export function ReportViewer({ type }: ReportViewerProps) {
                 <YAxis yAxisId="right" orientation="right" tickFormatter={(val) => `${val}%`} />
                 <RechartsTooltip />
                 <Legend />
-                <Bar yAxisId="left" dataKey="revenue" name="Revenue" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
-                <Bar yAxisId="right" dataKey="rate" name="Win Rate (%)" fill="hsl(var(--chart-3))" radius={[4, 4, 0, 0]} />
+                <Bar yAxisId="left" dataKey="revenue" name="Revenue" fill="var(--primary)" radius={[4, 4, 0, 0]} />
+                <Bar yAxisId="right" dataKey="rate" name="Win Rate (%)" fill="var(--chart-3)" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -289,7 +297,7 @@ export function ReportViewer({ type }: ReportViewerProps) {
   );
 
   return (
-    <div className="flex-1 space-y-6 p-4 md:p-8 pt-6">
+    <div className="space-y-6">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div className="flex items-center space-x-4">
           <Link

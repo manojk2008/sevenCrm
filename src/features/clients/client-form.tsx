@@ -6,24 +6,40 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { isValidGSTINFormat } from "@/lib/gst";
+import { INDUSTRIES } from "@/types/client";
+import { ApiError } from "@/lib/api";
+import { getClientErrorMessage } from "./api";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Loader2 } from "lucide-react";
+
+export interface ClientContactRecord {
+  id: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  designation?: string;
+  isPrimary: boolean;
+}
 
 export interface ClientRecord {
   id: string;
   name: string;
   contactperson: string;
+  industry: string;
+  email: string;
   phone: string;
   website?: string;
   gstNumber?: string;
   status: "active" | "inactive";
   tags: string[];
   revenue: number;
+  totalDeals?: number;
   lastActivity: string;
   primaryContact: {
     name: string;
@@ -33,6 +49,7 @@ export interface ClientRecord {
   };
   address: {
     line1: string;
+    line2?: string;
     city: string;
     state: string;
     pincode: string;
@@ -40,12 +57,21 @@ export interface ClientRecord {
   };
   notes?: string;
   churnReason?: string;
+  // Real backend fields not currently surfaced by this form's inputs (no
+  // assignee selector or multi-contact editor exists in the UI yet) — kept
+  // here only so components that read them (e.g. the detail page's
+  // Contacts tab) get real data instead of it being silently dropped.
+  assignedTo?: { id: string; name: string; email: string } | null;
+  contacts?: ClientContactRecord[];
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 const clientSchema = z.object({
   id: z.string().optional(),
   name: z.string().min(1, "Company name is required"),
   contactperson: z.string().min(1, "Contact person is required"),
+  industry: z.string().min(1, "Industry is required"),
   phone: z.string().min(1, "Phone number is required"),
   gstNumber: z.string().optional(),
   status: z.enum(["active", "inactive"]),
@@ -56,11 +82,15 @@ const clientSchema = z.object({
   primaryContact: z.object({
     name: z.string().min(1, "Primary contact name is required"),
     phone: z.string().min(1, "Primary contact phone is required"),
-    email: z.string().optional(),
+    // This is also used as the client's own company email (see
+    // src/features/clients/api.ts's toCorePayload) — the form has no
+    // separate company-email input, so it must be a real, valid address.
+    email: z.string().min(1, "Email is required").email("Enter a valid email"),
     designation: z.string().optional(),
   }),
   address: z.object({
     line1: z.string().min(1, "Address is required"),
+    line2: z.string().optional(),
     city: z.string().min(1, "City is required"),
     state: z.string().min(1, "State is required"),
     pincode: z.string().min(1, "Pincode is required"),
@@ -78,18 +108,19 @@ const clientSchema = z.object({
 });
 
 type ClientFormInput = z.input<typeof clientSchema>;
-type ClientFormValues = z.output<typeof clientSchema>;
+export type ClientFormValues = z.output<typeof clientSchema>;
 
 interface ClientFormProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   client?: ClientRecord;
-  onSubmit: (client: ClientRecord) => void;
+  onSubmit: (values: ClientFormValues) => Promise<void>;
 }
 
 const emptyClient: ClientFormInput = {
   name: "",
   contactperson: "",
+  industry: "",
   phone: "",
   gstNumber: "",
   status: "active",
@@ -97,18 +128,19 @@ const emptyClient: ClientFormInput = {
   tags: ["New"],
   revenue: 0,
   primaryContact: { name: "", phone: "", email: "", designation: "" },
-  address: { line1: "", city: "", state: "", pincode: "", country: "India" },
+  address: { line1: "", line2: "", city: "", state: "", pincode: "", country: "India" },
   notes: "",
 };
 
 export function ClientForm({ open, onOpenChange, client, onSubmit }: ClientFormProps) {
-  const { register, handleSubmit, reset, watch, setValue, formState: { errors, isSubmitting } } = useForm<ClientFormInput, undefined, ClientFormValues>({
+  const { register, handleSubmit, reset, watch, setValue, setError, formState: { errors, isSubmitting } } = useForm<ClientFormInput, undefined, ClientFormValues>({
     resolver: zodResolver(clientSchema),
     defaultValues: emptyClient,
   });
 
   const status = watch("status");
   const gstNumber = watch("gstNumber");
+  const industry = watch("industry");
   const name = watch("name");
 
   useEffect(() => {
@@ -151,14 +183,15 @@ export function ClientForm({ open, onOpenChange, client, onSubmit }: ClientFormP
   };
 
   const save = async (data: ClientFormValues) => {
-    // simulate async request
-    await new Promise(resolve => setTimeout(resolve, 500));
-    const clean = {
-      ...data,
-      id: data.id || `CL-${crypto.randomUUID().slice(0, 8).toUpperCase()}`,
-      lastActivity: new Date().toISOString(),
-    } as ClientRecord;
-    onSubmit(clean);
+    try {
+      await onSubmit(data);
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 409) {
+        setError("primaryContact.email", { message: "This email is already used by another client in your organization." });
+      }
+      toast.error(getClientErrorMessage(error));
+      return;
+    }
     toast.success(client ? "Client updated" : "Client created");
     onOpenChange(false);
   };
@@ -181,11 +214,24 @@ export function ClientForm({ open, onOpenChange, client, onSubmit }: ClientFormP
                 <Field id="client-contact-person" label="Contact Person"  error={errors.contactperson?.message}>
                   <Input id="client-contact-person" {...register("contactperson")} className={errors.contactperson ? "border-destructive" : ""} />
                 </Field>
-               
+
+                <Field id="client-industry" label="Industry" required error={errors.industry?.message}>
+                  <Select value={industry || undefined} onValueChange={(v) => v && setValue("industry", v, { shouldValidate: true })}>
+                    <SelectTrigger id="client-industry" className={errors.industry ? "border-destructive w-full" : "w-full"}>
+                      <SelectValue placeholder="Select industry" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {INDUSTRIES.map((option) => (
+                        <SelectItem key={option} value={option}>{option}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+
                 <Field id="client-phone" label="Phone" required error={errors.phone?.message}>
                   <Input id="client-phone" {...register("phone")} className={errors.phone ? "border-destructive" : ""} />
                 </Field>
-                
+
                 <Field id="client-gst-number" label="GST number">
                   <div className="flex gap-2">
                     <Input
@@ -226,6 +272,9 @@ export function ClientForm({ open, onOpenChange, client, onSubmit }: ClientFormP
                 </Field>
                 <Field id="primary-contact-phone" label="Phone" required error={errors.primaryContact?.phone?.message}>
                   <Input id="primary-contact-phone" {...register("primaryContact.phone")} className={errors.primaryContact?.phone ? "border-destructive" : ""} />
+                </Field>
+                <Field id="primary-contact-email" label="Email" required error={errors.primaryContact?.email?.message}>
+                  <Input id="primary-contact-email" type="email" {...register("primaryContact.email")} className={errors.primaryContact?.email ? "border-destructive" : ""} />
                 </Field>
               </div>
             </section>

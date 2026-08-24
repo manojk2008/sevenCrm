@@ -106,11 +106,11 @@ export function SearchContent() {
       : filteredResults.filter((r) => r.category === activeTab);
 
   return (
-    <div className="page-container section-gap">
+    <div className="section-gap">
       <div className="max-w-4xl mx-auto">
         {/* Search Header */}
         <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
-          <h1 className="text-2xl font-bold tracking-tight mb-4">Search Results</h1>
+          <h1 className="mb-4 text-3xl font-bold tracking-tight">Search Results</h1>
           <div className="relative">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 size-5 text-muted-foreground" />
             <Input
@@ -173,7 +173,7 @@ export function SearchContent() {
               return (
                 <motion.div key={result.id} variants={itemVariants}>
                   <Link href={result.href}>
-                    <Card className="rounded-xl hover:shadow-card transition-all duration-200 hover:border-primary/20 group cursor-pointer">
+                    <Card className="rounded-xl hover:shadow-card transition-[box-shadow,border-color] duration-200 hover:border-primary/20 group cursor-pointer">
                       <CardContent className="flex items-center gap-4 p-4">
                         <div className={`size-10 rounded-lg bg-muted flex items-center justify-center shrink-0`}>
                           <Icon className={`size-5 ${config.color}`} />
@@ -181,7 +181,7 @@ export function SearchContent() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
                             <p className="font-medium truncate">{result.title}</p>
-                            <Badge variant="outline" className="text-[10px] shrink-0">
+                            <Badge variant="outline" className="text-[11px] shrink-0">
                               {config.label}
                             </Badge>
                           </div>

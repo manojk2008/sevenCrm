@@ -28,7 +28,7 @@ export function PipelineSnapshot() {
       transition={{ delay: 0.4 }}
       className="flex-1 h-full"
     >
-      <Card className="h-full rounded-2xl border-slate-200 dark:border-slate-800 shadow-sm flex flex-col">
+      <Card className="h-full rounded-xl shadow-sm flex flex-col">
         <CardHeader className="pb-2">
           <CardTitle className="text-lg font-semibold">Pipeline Snapshot</CardTitle>
           <CardDescription>Value distribution by stage</CardDescription>
@@ -36,7 +36,7 @@ export function PipelineSnapshot() {
         <CardContent className="flex-1 flex flex-col justify-center">
           <div className="mb-4">
             <p className="text-sm text-muted-foreground mb-1">Total Pipeline Value</p>
-            <p className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">
+            <p className="text-3xl font-bold tracking-tight text-foreground">
               {formatCurrency(totalValue)}
             </p>
           </div>
@@ -60,7 +60,7 @@ export function PipelineSnapshot() {
                 <div className="flex items-center gap-2">
                   <div className={`w-3 h-3 rounded-full ${item.color}`} />
                   <span className="font-medium">{item.name}</span>
-                  <span className="text-muted-foreground text-xs bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">
+                  <span className="text-muted-foreground text-xs bg-muted px-1.5 py-0.5 rounded">
                     {item.count} deals
                   </span>
                 </div>

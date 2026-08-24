@@ -45,7 +45,7 @@ export function ConversionChart({
             }}
             contentStyle={{
               borderRadius: '8px',
-              border: '1px solid hsl(var(--border))',
+              border: '1px solid var(--border)',
               // ...rest unchanged
             }}
           />

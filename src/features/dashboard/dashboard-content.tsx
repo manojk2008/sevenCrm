@@ -13,40 +13,39 @@ import { TodaysTasks } from './todays-tasks';
 import { MonthlyComparison } from './monthly-comparison';
 import { QuickActions } from './quick-actions';
 import { format } from 'date-fns';
-import { motion } from 'framer-motion';
+import { useAuthStore } from '@/stores/auth-store';
 
 export function DashboardContent() {
-  const [mounted, setMounted] = useState(false);
-  const [greeting, setGreeting] = useState('');
+  const { user } = useAuthStore();
+  // Greeting and date both depend on the client clock, so they resolve after
+  // mount. Only the two lines that need them wait — the dashboard itself
+  // renders immediately rather than blanking the whole route.
+  const [now, setNow] = useState<Date | null>(null);
 
   useEffect(() => {
-    setMounted(true);
-    const hour = new Date().getHours();
-    if (hour < 12) setGreeting('Good Morning');
-    else if (hour < 18) setGreeting('Good Afternoon');
-    else setGreeting('Good Evening');
+    setNow(new Date());
   }, []);
 
-  if (!mounted) return null;
+  const greeting = React.useMemo(() => {
+    if (!now) return null;
+    const hour = now.getHours();
+    if (hour < 12) return 'Good morning';
+    if (hour < 18) return 'Good afternoon';
+    return 'Good evening';
+  }, [now]);
+
+  const firstName = user?.name?.split(' ')[0];
 
   return (
-    <div className="flex-1 space-y-6 p-4 md:p-8 pt-6 max-w-7xl mx-auto w-full">
-      <div className="flex flex-col gap-2">
-        <motion.h1 
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white"
-        >
-          {greeting}, Admin
-        </motion.h1>
-        <motion.p 
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="text-muted-foreground"
-        >
-          Here&apos;s what&apos;s happening with your business today. {format(new Date(), 'EEEE, MMMM do, yyyy')}
-        </motion.p>
+    <div className="space-y-8">
+      <div className="flex flex-col gap-1">
+        <h1 className="text-3xl font-bold tracking-tight">
+          {greeting ? (firstName ? `${greeting}, ${firstName}` : greeting) : 'Dashboard'}
+        </h1>
+        <p className="text-sm text-muted-foreground">
+          Here&apos;s what&apos;s happening with your business today.
+          {now ? ` ${format(now, 'EEEE, MMMM do, yyyy')}` : ''}
+        </p>
       </div>
 
       <KpiCards />
@@ -81,7 +80,7 @@ export function DashboardContent() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 pb-12">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         <div className="lg:col-span-4 flex flex-col">
           <TodaysTasks />
         </div>

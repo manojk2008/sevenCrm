@@ -65,7 +65,7 @@ export function SalesFunnel({ data, loading }: SalesFunnelProps) {
               </div>
               <div className="flex-1 flex justify-center">
                 <div
-                  className="h-10 rounded-sm relative group flex items-center justify-center transition-all duration-300"
+                  className="h-10 rounded-sm relative group flex items-center justify-center transition-[width,opacity] duration-300"
                   style={{ width, backgroundColor: item.color }}
                 >
                   <span className="text-white font-medium text-sm z-10 drop-shadow-md">

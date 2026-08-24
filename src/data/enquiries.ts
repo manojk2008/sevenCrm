@@ -14,7 +14,6 @@ const stageDistribution: EnquiryStage[] = [
 
 const sources: EnquirySource[] = ['website', 'referral', 'cold-call', 'social-media', 'trade-show'];
 const titles = ['ERP Implementation', 'Cloud Migration', 'Cybersecurity Audit', 'Mobile App Dev', 'AI Integration', 'Data Pipeline Setup', 'CRM Customization', 'HRMS Upgrade'];
-const productPool = ['ERP Suite', 'Cloud Hosting', 'Security Audit Package', 'Support Plan', 'Custom Integration'];
 
 export const enquiries: Enquiry[] = stageDistribution.map((stage, i) => {
   const client = clients[i % clients.length];
@@ -34,7 +33,9 @@ export const enquiries: Enquiry[] = stageDistribution.map((stage, i) => {
     source: sources[i % sources.length],
     assignedTo: assignedUser.id,
     assignedToName: assignedUser.name,
-    products: [productPool[i % productPool.length]],
+    // Enquiry.products is now a real EnquiryProduct[] resolved from the
+    // backend's Product records; there are no invented product names here.
+    products: [],
     expectedCloseDate: new Date(Date.now() + (10 + i) * 86400000).toISOString(),
     comments: [
       {

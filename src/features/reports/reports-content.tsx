@@ -101,10 +101,10 @@ const item = {
 
 export function ReportsContent() {
   return (
-    <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
+    <div className="space-y-6">
       <div className="flex items-center justify-between space-y-2">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">Reports</h2>
+          <h1 className="text-3xl font-bold tracking-tight">Reports</h1>
           <p className="text-muted-foreground">
             Generate insights from your business data
           </p>
@@ -122,7 +122,7 @@ export function ReportsContent() {
           return (
             <motion.div key={report.id} variants={item}>
               <Link href={`/reports/${report.id}`} className="block h-full">
-                <Card className="h-full rounded-2xl hover:shadow-md transition-all duration-200 border-border/50 hover:border-primary/20 group">
+                <Card className="h-full rounded-xl hover:shadow-md transition-[box-shadow,border-color] duration-200 border-border/50 hover:border-primary/20 group">
                   <CardHeader className="flex flex-row items-center gap-4 space-y-0">
                     <div className={`p-3 rounded-xl ${report.color} group-hover:scale-110 transition-transform`}>
                       <Icon className="h-6 w-6" />

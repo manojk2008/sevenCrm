@@ -26,7 +26,7 @@ export function ErrorState({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       className={cn(
-        'flex flex-col items-center justify-center p-8 text-center rounded-2xl border border-destructive/20 bg-destructive/5',
+        'flex flex-col items-center justify-center p-8 text-center rounded-xl border border-destructive/20 bg-destructive/5',
         className
       )}
       {...props}

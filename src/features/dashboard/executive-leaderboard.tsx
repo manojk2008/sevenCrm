@@ -28,7 +28,7 @@ export function ExecutiveLeaderboard() {
       transition={{ delay: 0.7 }}
       className="h-full"
     >
-      <Card className="h-full rounded-2xl border-slate-200 dark:border-slate-800 shadow-sm flex flex-col">
+      <Card className="h-full rounded-xl shadow-sm flex flex-col">
         <CardHeader className="pb-4 flex flex-row items-center justify-between">
           <div className="space-y-1">
             <CardTitle className="text-lg font-semibold flex items-center gap-2">
@@ -45,7 +45,7 @@ export function ExecutiveLeaderboard() {
         </CardHeader>
         <CardContent className="flex-1 p-0 overflow-x-auto">
           <table className="w-full text-sm text-left">
-            <thead className="text-xs text-slate-500 uppercase bg-slate-50/50 dark:bg-slate-900/50 border-b border-slate-100 dark:border-slate-800">
+            <thead className="text-xs text-slate-500 uppercase bg-muted/40 border-b border-border">
               <tr>
                 <th className="px-6 py-3 font-semibold">Rank</th>
                 <th className="px-6 py-3 font-semibold">Executive</th>
@@ -75,13 +75,13 @@ export function ExecutiveLeaderboard() {
                     <div className={cn(
                       "w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white shadow-inner",
                       idx === 0 ? "bg-gradient-to-br from-indigo-500 to-purple-600" : 
-                      "bg-slate-300 dark:bg-slate-700 text-slate-700 dark:text-slate-300"
+                      "bg-slate-300 dark:bg-slate-700 text-foreground"
                     )}>
                       {user.avatar}
                     </div>
                     <div>
-                      <p className="font-semibold text-slate-900 dark:text-slate-100">{user.name}</p>
-                      <p className="text-[10px] text-muted-foreground uppercase tracking-wider">{user.role}</p>
+                      <p className="font-semibold text-foreground">{user.name}</p>
+                      <p className="text-[11px] text-muted-foreground uppercase tracking-wider">{user.role}</p>
                     </div>
                   </td>
                   <td className="px-6 py-4 text-center font-medium">

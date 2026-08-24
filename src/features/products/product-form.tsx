@@ -1,324 +1,359 @@
 "use client";
-import { useState } from 'react';
-import { useForm, useFieldArray } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { Product } from '@/types';
-import * as z from 'zod';
-import { toast } from 'sonner';
-import { Plus, Trash2 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@/components/ui/form';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { Switch } from '@/components/ui/switch';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
+import { useCallback, useEffect, useState } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import * as z from "zod";
+import { toast } from "sonner";
+import { Loader2, Settings2 } from "lucide-react";
+import type { Product, ProductGroup } from "@/types/product";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { listAssignableProductGroups, getProductErrorMessage, getProductGroupErrorMessage } from "./api";
+
+// Mirrors the backend's CreateProductDto/UpdateProductDto validation so the
+// user gets an inline error instead of a round-trip 400. Deliberately has no
+// stock/gstRate/hsnCode/specifications/status: none of those exist on the
+// approved Product model (see backend/prisma/schema.prisma), and status is
+// changed from the list via its own endpoint, never through this form.
 const productSchema = z.object({
-  name: z.string().min(2, 'Name must be at least 2 characters'),
-  category: z.string().min(1, 'Category is required'),
-  description: z.string().optional(),
-  price: z.coerce.number().min(0, 'Price must be positive'),
-  stock: z.coerce.number().min(0, 'Stock must be positive'),
-  unit: z.string().min(1, 'Unit is required'),
+  name: z.string().min(2, "Name must be at least 2 characters").max(200, "Name is too long"),
+  productGroupId: z.string().min(1, "Product group is required"),
+  description: z.string().max(5000, "Description is too long").optional(),
+  price: z.coerce
+    .number({ message: "Price must be a number" })
+    .min(0, "Price cannot be negative")
+    .max(999_999_999_999.99, "Price is too large")
+    // Decimal(14,2) cannot store more precision — rejected here rather than
+    // being silently rounded by the database.
+    .refine((value) => {
+      const decimals = String(value).split(".")[1];
+      return decimals === undefined || decimals.length <= 2;
+    }, "Price can have at most 2 decimal places"),
   sku: z.string().optional(),
-  hsnCode: z.string().optional(),
-  gstRate: z.string().min(1, 'GST Rate is required'),
-  status: z.boolean().default(true),
-  specifications: z.array(z.object({
-    key: z.string().min(1, 'Key is required'),
-    value: z.string().min(1, 'Value is required')
-  }))
+  unit: z.string().optional(),
 });
 
-type ProductFormValues = z.infer<typeof productSchema>;
+type ProductFormInput = z.input<typeof productSchema>;
+export type ProductFormValues = z.output<typeof productSchema>;
+
+const emptyProduct: ProductFormInput = {
+  name: "",
+  productGroupId: "",
+  description: "",
+  price: 0,
+  sku: "",
+  unit: "",
+};
 
 interface ProductFormProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   product?: Product | null;
+  onSubmit: (values: ProductFormValues) => Promise<void>;
+  /** Admin/Super Admin only — enables the shortcut to the group manager. */
+  canManageGroups: boolean;
+  /** Opens the Manage Groups dialog (closes this form first). */
+  onManageGroups: () => void;
 }
 
-export function ProductForm({ open, onOpenChange, product }: ProductFormProps) {
-  const [generatedSku] = useState(() => `SKU-${Math.floor(Math.random() * 10000)}`);
-  const form = useForm({
+type GroupsState = "loading" | "error" | "ready";
+
+/** A selectable group option; `inactive` marks the edited product's own group. */
+interface GroupOption {
+  id: string;
+  name: string;
+  inactive: boolean;
+}
+
+export function ProductForm({
+  open,
+  onOpenChange,
+  product,
+  onSubmit,
+  canManageGroups,
+  onManageGroups,
+}: ProductFormProps) {
+  const {
+    register,
+    handleSubmit,
+    reset,
+    watch,
+    setValue,
+    formState: { errors, isSubmitting },
+  } = useForm<ProductFormInput, undefined, ProductFormValues>({
     resolver: zodResolver(productSchema),
-    defaultValues: product ? {
-      ...product,
-      status: product.status === 'active',
-      gstRate: product.gstRate.toString(),
-      specifications: []
-    } : {
-      name: '',
-      category: '',
-      description: '',
-      price: 0,
-      stock: 0,
-      unit: 'Per License',
-      sku: generatedSku,
-      hsnCode: '',
-      gstRate: '18',
-      status: true,
-      specifications: []
+    defaultValues: emptyProduct,
+  });
+
+  const [groups, setGroups] = useState<GroupOption[]>([]);
+  const [groupsState, setGroupsState] = useState<GroupsState>("loading");
+  const [groupsError, setGroupsError] = useState("");
+
+  const productGroupId = watch("productGroupId");
+
+  const loadGroups = useCallback(async () => {
+    setGroupsState("loading");
+    try {
+      const active = await listAssignableProductGroups();
+      const options: GroupOption[] = active.map((group: ProductGroup) => ({
+        id: group.id,
+        name: group.name,
+        inactive: false,
+      }));
+
+      // When editing a product whose group has since been deactivated, that
+      // group is not in the assignable list. It is added here so the product
+      // keeps showing its real group and can be saved without being forced
+      // to move — it is only ever added for the product being edited, so it
+      // is never offered as a destination for any other product.
+      if (product && !options.some((option) => option.id === product.productGroupId)) {
+        options.unshift({
+          id: product.productGroupId,
+          name: product.productGroup.name,
+          inactive: true,
+        });
+      }
+
+      setGroups(options);
+      setGroupsState("ready");
+    } catch (error) {
+      setGroupsError(getProductGroupErrorMessage(error));
+      setGroupsState("error");
     }
-  });
+  }, [product]);
 
-  const { fields, append, remove } = useFieldArray({
-    name: "specifications",
-    control: form.control
-  });
+  useEffect(() => {
+    if (!open) return;
+    reset(
+      product
+        ? {
+            name: product.name,
+            productGroupId: product.productGroupId,
+            description: product.description,
+            price: product.price,
+            sku: product.sku,
+            unit: product.unit,
+          }
+        : emptyProduct,
+    );
+    void loadGroups();
+  }, [open, product, reset, loadGroups]);
 
-  const onSubmit = (data: ProductFormValues) => {
-    toast.success(`Product ${product ? 'updated' : 'created'} successfully!`);
+  const hasNoAssignableGroups =
+    groupsState === "ready" && groups.filter((group) => !group.inactive).length === 0;
+  // A new product genuinely cannot be created without an active group; an
+  // existing one can still be saved because it keeps its current group.
+  const blockedByMissingGroups = hasNoAssignableGroups && !product;
+
+  const save = async (values: ProductFormValues) => {
+    try {
+      await onSubmit(values);
+    } catch (error) {
+      toast.error(getProductErrorMessage(error));
+      return;
+    }
+    toast.success(product ? "Product updated" : "Product created");
     onOpenChange(false);
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] w-full overflow-y-auto sm:max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>{product ? 'Edit product' : 'Add product'}</DialogTitle>
+      <DialogContent className="flex max-h-[90vh] w-full flex-col p-0 sm:max-w-2xl">
+        <DialogHeader className="shrink-0 border-b p-6 pb-4">
+          <DialogTitle>{product ? "Edit product" : "Add product"}</DialogTitle>
           <DialogDescription>
-            {product ? 'Make changes to your product here.' : 'Add a new product to your catalog.'}
+            {product
+              ? "Update this product's details."
+              : "Add a new product to your organization's catalog."}
           </DialogDescription>
         </DialogHeader>
 
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} style={{ padding: '20px 24px' }}>
+        <div className="scrollbar-thin flex-1 overflow-y-auto p-6">
+          <form id="product-form" onSubmit={handleSubmit(save)} className="space-y-6">
             <section className="space-y-4">
               <h3 className="text-sm font-semibold">Product details</h3>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
-                <FormField
-                  control={form.control}
-                  name="name"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Product name *</FormLabel>
-                      <FormControl>
-                        <Input placeholder="Enterprise Software License" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <Field id="product-name" label="Product name" required error={errors.name?.message}>
+                  <Input
+                    id="product-name"
+                    placeholder="e.g. Welding Machine 250A"
+                    {...register("name")}
+                    className={errors.name ? "border-destructive" : ""}
+                  />
+                </Field>
 
-                <FormField
-                  control={form.control}
-                  name="category"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Category *</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select category" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="Software">Software</SelectItem>
-                          <SelectItem value="Service">Service</SelectItem>
-                          <SelectItem value="Hardware">Hardware</SelectItem>
-                          <SelectItem value="Subscription">Subscription</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
+                <Field
+                  id="product-group"
+                  label="Product group"
+                  required
+                  error={errors.productGroupId?.message}
+                >
+                  {groupsState === "loading" ? (
+                    <div className="flex h-9 items-center gap-2 rounded-lg border border-input px-3 text-sm text-muted-foreground">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      Loading groups…
+                    </div>
+                  ) : groupsState === "error" ? (
+                    <div className="space-y-2">
+                      <p className="text-xs text-destructive">{groupsError}</p>
+                      <Button type="button" variant="outline" size="sm" onClick={() => void loadGroups()}>
+                        Retry
+                      </Button>
+                    </div>
+                  ) : (
+                    <Select
+                      value={productGroupId || undefined}
+                      onValueChange={(value) =>
+                        value && setValue("productGroupId", value, { shouldValidate: true })
+                      }
+                    >
+                      <SelectTrigger
+                        id="product-group"
+                        className={errors.productGroupId ? "w-full border-destructive" : "w-full"}
+                        disabled={groups.length === 0}
+                      >
+                        <SelectValue placeholder="Select product group" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {groups.map((group) => (
+                          <SelectItem key={group.id} value={group.id}>
+                            {group.inactive ? `${group.name} (Inactive)` : group.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   )}
-                />
+                </Field>
 
-                <FormField
-                  control={form.control}
-                  name="unit"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Unit *</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select unit" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="Per License">Per License</SelectItem>
-                          <SelectItem value="Per User">Per User</SelectItem>
-                          <SelectItem value="Per Month">Per Month</SelectItem>
-                          <SelectItem value="Per Year">Per Year</SelectItem>
-                          <SelectItem value="One-time">One-time</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                <Field id="product-price" label="Price (₹)" required error={errors.price?.message}>
+                  <Input
+                    id="product-price"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="0.00"
+                    {...register("price")}
+                    className={errors.price ? "border-destructive" : ""}
+                  />
+                </Field>
 
-                <FormField
-                  control={form.control}
-                  name="price"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Price (₹) *</FormLabel>
-                      <FormControl>
-                        <Input type="number" placeholder="0.00" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                <Field id="product-unit" label="Unit" error={errors.unit?.message}>
+                  <Input
+                    id="product-unit"
+                    placeholder="e.g. piece, kg, hour, licence"
+                    {...register("unit")}
+                  />
+                </Field>
 
-                <FormField
-                  control={form.control}
-                  name="stock"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Stock *</FormLabel>
-                      <FormControl>
-                        <Input type="number" placeholder="0" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                <Field id="product-sku" label="SKU" error={errors.sku?.message}>
+                  <Input id="product-sku" placeholder="Optional" {...register("sku")} />
+                </Field>
 
-                <FormField
-                  control={form.control}
-                  name="gstRate"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>GST rate *</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select GST" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="0">0%</SelectItem>
-                          <SelectItem value="5">5%</SelectItem>
-                          <SelectItem value="12">12%</SelectItem>
-                          <SelectItem value="18">18%</SelectItem>
-                          <SelectItem value="28">28%</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="sku"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>SKU</FormLabel>
-                      <FormControl>
-                        <Input placeholder="Auto-generated" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="description"
-                  render={({ field }) => (
-                    <FormItem className="sm:col-span-2">
-                      <FormLabel>Description</FormLabel>
-                      <FormControl>
-                        <Textarea
-                          placeholder="Detailed product description..."
-                          className="resize-none"
-                          rows={3}
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                <Field
+                  id="product-description"
+                  label="Description"
+                  error={errors.description?.message}
+                  className="md:col-span-2"
+                >
+                  <Textarea
+                    id="product-description"
+                    rows={3}
+                    placeholder="Detailed product description…"
+                    className="resize-none"
+                    {...register("description")}
+                  />
+                </Field>
               </div>
             </section>
 
-            <section className="space-y-4 border-t pt-6">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold">Specifications</h3>
-                <Button type="button" variant="outline" size="sm" onClick={() => append({ key: '', value: '' })}>
-                  <Plus className="mr-2 h-3.5 w-3.5" /> Add row
-                </Button>
-              </div>
-
-              {fields.map((field, index) => (
-                <div key={field.id} className="flex gap-2 items-start">
-                  <FormField
-                    control={form.control}
-                    name={`specifications.${index}.key`}
-                    render={({ field }) => (
-                      <FormItem className="flex-1">
-                        <FormControl>
-                          <Input placeholder="e.g. Memory" {...field} />
-                        </FormControl>
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name={`specifications.${index}.value`}
-                    render={({ field }) => (
-                      <FormItem className="flex-1">
-                        <FormControl>
-                          <Input placeholder="e.g. 16GB" {...field} />
-                        </FormControl>
-                      </FormItem>
-                    )}
-                  />
-                  <Button type="button" variant="ghost" size="icon" onClick={() => remove(index)} className="text-red-500 flex-shrink-0 h-10 w-10">
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              ))}
-              {fields.length === 0 && (
-                <p className="text-sm text-muted-foreground text-center py-4 bg-muted/40 rounded-lg border border-dashed">
-                  No specifications added. Click &apos;Add row&apos; to define product details.
+            {hasNoAssignableGroups && (
+              <div className="rounded-xl border border-dashed bg-muted/40 p-4">
+                <p className="text-sm font-medium text-foreground">
+                  No active product groups available
                 </p>
-              )}
-            </section>
-
-            <div className="flex items-center justify-between rounded-lg border p-4 mt-6">
-              <div>
-                <FormLabel className="text-base">Active status</FormLabel>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  {form.watch('status') ? 'Product is visible and available for sale.' : 'Product is hidden.'}
+                  {product
+                    ? "This product keeps its current group, but no active group is available to move it to."
+                    : canManageGroups
+                      ? "Every product must belong to a product group. Create or reactivate one to continue."
+                      : "Every product must belong to a product group. An administrator must create or reactivate one before products can be added."}
                 </p>
-              </div>
-              <FormField
-                control={form.control}
-                name="status"
-                render={({ field }) => (
-                  <Switch checked={field.value} onCheckedChange={field.onChange} />
+                {canManageGroups && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="mt-3"
+                    onClick={() => {
+                      onOpenChange(false);
+                      onManageGroups();
+                    }}
+                  >
+                    <Settings2 className="mr-2 h-4 w-4" /> Manage groups
+                  </Button>
                 )}
-              />
-            </div>
-
-            <DialogFooter className="sticky bottom-0 border-t bg-background py-4 mt-6">
-              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-              <Button type="submit">{product ? 'Save changes' : 'Create product'}</Button>
-            </DialogFooter>
+              </div>
+            )}
           </form>
-        </Form>
+        </div>
+
+        <DialogFooter className="shrink-0 border-t bg-background p-6 pt-4">
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isSubmitting}>
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            form="product-form"
+            disabled={isSubmitting || groupsState !== "ready" || blockedByMissingGroups}
+          >
+            {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {product ? "Save changes" : "Create product"}
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function Field({
+  id,
+  label,
+  required,
+  error,
+  className,
+  children,
+}: {
+  id: string;
+  label: string;
+  required?: boolean;
+  error?: string;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className={`flex flex-col space-y-2 ${className ?? ""}`}>
+      <Label htmlFor={id} className={error ? "text-destructive" : ""}>
+        {label}
+        {required ? " *" : ""}
+      </Label>
+      {children}
+      {error && (
+        <span id={`${id}-error`} className="text-xs text-destructive" role="alert">
+          {error}
+        </span>
+      )}
+    </div>
   );
 }

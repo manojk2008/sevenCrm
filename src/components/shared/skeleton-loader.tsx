@@ -39,7 +39,7 @@ export function TableSkeleton({ rows = 5 }: { rows?: number }) {
 
 export function CardSkeleton() {
   return (
-    <div className="rounded-2xl border bg-card text-card-foreground shadow-sm p-6 space-y-4">
+    <div className="rounded-xl border bg-card text-card-foreground shadow-sm p-6 space-y-4">
       <Skeleton className="h-6 w-1/2" />
       <Skeleton className="h-4 w-3/4" />
       <div className="space-y-2 mt-4">
@@ -53,7 +53,7 @@ export function CardSkeleton() {
 
 export function ChartSkeleton() {
   return (
-    <div className="rounded-2xl border bg-card p-6 shadow-sm w-full h-[350px] flex flex-col">
+    <div className="rounded-xl border bg-card p-6 shadow-sm w-full h-[350px] flex flex-col">
       <Skeleton className="h-6 w-[200px] mb-6" />
       <Skeleton className="flex-1 w-full" />
     </div>
@@ -85,7 +85,7 @@ export function FormSkeleton() {
 
 export function StatCardSkeleton() {
   return (
-    <div className="rounded-2xl border bg-card p-6 shadow-sm space-y-4">
+    <div className="rounded-xl border bg-card p-6 shadow-sm space-y-4">
       <div className="flex justify-between">
         <div className="space-y-2">
           <Skeleton className="h-4 w-[100px]" />

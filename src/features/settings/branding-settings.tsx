@@ -20,7 +20,7 @@ export function BrandingSettings() {
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="text-2xl font-semibold">Branding</h3>
+        <h2 className="text-xl font-semibold tracking-tight">Branding</h2>
         <p className="text-sm text-muted-foreground">
           Customize the look and feel of your CRM and customer-facing documents.
         </p>
@@ -32,7 +32,7 @@ export function BrandingSettings() {
         <div className="space-y-8">
           <div className="space-y-3">
             <Label>Company Logo</Label>
-            <div className="border-2 border-dashed rounded-2xl p-8 flex flex-col items-center justify-center text-center cursor-pointer hover:bg-muted/50 transition-colors">
+            <div className="border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center text-center cursor-pointer hover:bg-muted/50 transition-colors">
               <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center mb-4 text-primary">
                 <Upload className="h-6 w-6" />
               </div>
@@ -84,7 +84,7 @@ export function BrandingSettings() {
 
         <div>
           <Label className="mb-3 block">Preview</Label>
-          <Card className="rounded-2xl border overflow-hidden shadow-lg">
+          <Card className="rounded-xl border overflow-hidden shadow-lg">
             <div className="h-2 w-full" style={{ backgroundColor: color }} />
             <CardContent className="p-6 space-y-6">
               <div className="flex justify-between items-start">

@@ -5,12 +5,12 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
 
 const data = [
-  { name: 'Website', value: 35, color: '#4f46e5' },      // indigo-600
-  { name: 'Referral', value: 25, color: '#10b981' },     // emerald-500
-  { name: 'Cold Call', value: 15, color: '#f59e0b' },    // amber-500
-  { name: 'Social Media', value: 10, color: '#8b5cf6' }, // violet-500
-  { name: 'Trade Show', value: 8, color: '#ec4899' },    // pink-500
-  { name: 'Other', value: 7, color: '#64748b' },         // slate-500
+  { name: 'Website', value: 35, color: 'var(--chart-1)' },
+  { name: 'Referral', value: 25, color: 'var(--chart-3)' },
+  { name: 'Cold Call', value: 15, color: 'var(--chart-4)' },
+  { name: 'Social Media', value: 10, color: 'var(--chart-2)' },
+  { name: 'Trade Show', value: 8, color: 'var(--chart-5)' },
+  { name: 'Other', value: 7, color: 'var(--muted-foreground)' },
 ];
 
 const totalLeads = data.reduce((acc, curr) => acc + curr.value, 0) * 12; // Just to make it a bigger number
@@ -23,14 +23,14 @@ export function LeadSourcesChart() {
       transition={{ delay: 0.8 }}
       className="h-full"
     >
-      <Card className="h-full rounded-2xl border-slate-200 dark:border-slate-800 shadow-sm flex flex-col">
+      <Card className="h-full rounded-xl shadow-sm flex flex-col">
         <CardHeader className="pb-0">
           <CardTitle className="text-lg font-semibold">Lead Sources</CardTitle>
           <CardDescription>Where are enquiries coming from</CardDescription>
         </CardHeader>
         <CardContent className="flex-1 flex flex-col items-center justify-center min-h-[300px] relative">
           <div className="absolute inset-0 flex items-center justify-center flex-col pointer-events-none pb-6">
-            <span className="text-3xl font-bold text-slate-900 dark:text-white">{totalLeads}</span>
+            <span className="text-3xl font-bold text-foreground">{totalLeads}</span>
             <span className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Total Leads</span>
           </div>
           <ResponsiveContainer width="100%" height={260}>

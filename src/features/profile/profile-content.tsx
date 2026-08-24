@@ -88,7 +88,7 @@ export function ProfileContent() {
   if (!user) return null;
 
   return (
-    <div className="page-container section-gap">
+    <div className="section-gap">
       <motion.div variants={containerVariants} initial="hidden" animate="visible">
         {/* Header */}
         <motion.div variants={itemVariants} className="flex items-center gap-6 mb-8">
@@ -138,7 +138,7 @@ export function ProfileContent() {
           {/* Personal Info */}
           <TabsContent value="personal">
             <motion.div variants={itemVariants}>
-              <Card className="rounded-2xl shadow-card">
+              <Card className="rounded-xl shadow-card">
                 <CardHeader>
                   <CardTitle>Personal Information</CardTitle>
                   <CardDescription>Update your personal details</CardDescription>
@@ -189,7 +189,7 @@ export function ProfileContent() {
           {/* Security */}
           <TabsContent value="security">
             <motion.div variants={itemVariants} className="space-y-6">
-              <Card className="rounded-2xl shadow-card">
+              <Card className="rounded-xl shadow-card">
                 <CardHeader>
                   <CardTitle>Change Password</CardTitle>
                   <CardDescription>Ensure your account stays secure</CardDescription>
@@ -241,7 +241,7 @@ export function ProfileContent() {
                 </CardContent>
               </Card>
 
-              <Card className="rounded-2xl shadow-card">
+              <Card className="rounded-xl shadow-card">
                 <CardHeader>
                   <CardTitle>Two-Factor Authentication</CardTitle>
                   <CardDescription>Add an extra layer of security</CardDescription>
@@ -266,7 +266,7 @@ export function ProfileContent() {
           {/* Preferences */}
           <TabsContent value="preferences">
             <motion.div variants={itemVariants}>
-              <Card className="rounded-2xl shadow-card">
+              <Card className="rounded-xl shadow-card">
                 <CardHeader>
                   <CardTitle>Preferences</CardTitle>
                   <CardDescription>Customize your experience</CardDescription>
@@ -319,7 +319,7 @@ export function ProfileContent() {
           {/* Activity */}
           <TabsContent value="activity">
             <motion.div variants={itemVariants}>
-              <Card className="rounded-2xl shadow-card">
+              <Card className="rounded-xl shadow-card">
                 <CardHeader>
                   <CardTitle>Recent Activity</CardTitle>
                   <CardDescription>Your recent actions and login history</CardDescription>

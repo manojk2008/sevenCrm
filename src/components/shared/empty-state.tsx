@@ -27,7 +27,7 @@ export function EmptyState({
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
       className={cn(
-        'flex flex-col items-center justify-center p-12 text-center rounded-2xl border border-dashed',
+        'flex flex-col items-center justify-center p-12 text-center rounded-xl border border-dashed',
         className
       )}
       {...props}

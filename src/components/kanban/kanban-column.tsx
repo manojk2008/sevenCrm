@@ -32,9 +32,9 @@ export function KanbanColumn({ stage, enquiries, onCardClick }: KanbanColumnProp
   }, [enquiries]);
 
   return (
-    <div className="flex flex-col h-full w-[320px] max-w-[320px] flex-shrink-0 bg-slate-100/50 dark:bg-slate-900 rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800">
+    <div className="flex h-[calc(100vh-22rem)] min-h-[24rem] w-[320px] max-w-[320px] flex-shrink-0 flex-col overflow-hidden rounded-xl border bg-card">
       {/* Column Header */}
-      <div className={`px-4 py-3 border-b border-slate-200 dark:border-slate-800 flex flex-col gap-1 ${stage.bgColor} bg-opacity-30 dark:bg-opacity-20`}>
+      <div className={`px-4 py-3 border-b flex flex-col gap-1 ${stage.bgColor} bg-opacity-30 dark:bg-opacity-20`}>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <h3 className={`font-semibold text-sm ${stage.color}`}>{stage.label}</h3>

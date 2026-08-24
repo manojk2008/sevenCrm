@@ -43,7 +43,7 @@ export function AuditLogSettings() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h3 className="text-2xl font-semibold">Audit Logs</h3>
+          <h2 className="text-xl font-semibold tracking-tight">Audit Logs</h2>
           <p className="text-sm text-muted-foreground">
             Track user activities and system changes.
           </p>
@@ -62,7 +62,7 @@ export function AuditLogSettings() {
         </Button>
       </div>
 
-      <div className="border rounded-2xl overflow-hidden">
+      <div className="border rounded-xl overflow-hidden">
         <Table>
           <TableHeader className="bg-muted/50">
             <TableRow>
@@ -82,7 +82,7 @@ export function AuditLogSettings() {
                 <TableCell>
                   <div className="flex items-center gap-2">
                     <Avatar className="h-6 w-6">
-                      <AvatarFallback className="text-[10px] bg-primary/10 text-primary">
+                      <AvatarFallback className="text-[11px] bg-primary/10 text-primary">
                         {log.user.initials}
                       </AvatarFallback>
                     </Avatar>

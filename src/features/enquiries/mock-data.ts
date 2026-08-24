@@ -1,5 +1,8 @@
 import { Enquiry } from "@/types/enquiry";
 
+// Enquiry.products is a real EnquiryProduct[] resolved from the backend's
+// Product records — no product names are invented here.
+
 export const mockEnquiries: Enquiry[] = [
   {
     id: "e1",
@@ -14,7 +17,7 @@ export const mockEnquiries: Enquiry[] = [
     source: "website",
     assignedTo: "u1",
     assignedToName: "Rahul Sharma",
-    products: ["ERP Enterprise"],
+    products: [],
     expectedCloseDate: new Date(Date.now() + 30 * 86400000).toISOString(),
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -36,7 +39,7 @@ export const mockEnquiries: Enquiry[] = [
     source: "referral",
     assignedTo: "u2",
     assignedToName: "Priya Patel",
-    products: ["CRM Pro"],
+    products: [],
     expectedCloseDate: new Date(Date.now() + 10 * 86400000).toISOString(),
     createdAt: new Date(Date.now() - 15 * 86400000).toISOString(),
     updatedAt: new Date().toISOString(),
@@ -58,7 +61,7 @@ export const mockEnquiries: Enquiry[] = [
     source: "cold-call",
     assignedTo: "u1",
     assignedToName: "Rahul Sharma",
-    products: ["Custom Dev"],
+    products: [],
     expectedCloseDate: new Date(Date.now() + 45 * 86400000).toISOString(),
     createdAt: new Date(Date.now() - 2 * 86400000).toISOString(),
     updatedAt: new Date().toISOString(),

@@ -27,7 +27,7 @@ export function EmailTemplates() {
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="text-2xl font-semibold">Email Templates</h3>
+        <h2 className="text-xl font-semibold tracking-tight">Email Templates</h2>
         <p className="text-sm text-muted-foreground">
           Customize the emails sent from your CRM.
         </p>
@@ -57,7 +57,7 @@ export function EmailTemplates() {
         </div>
 
         <div className="md:col-span-2">
-          <Card className="rounded-2xl shadow-sm border-border/50">
+          <Card className="rounded-xl shadow-sm border-border/50">
             <CardHeader className="flex flex-row items-center justify-between border-b pb-4">
               <div>
                 <CardTitle className="text-xl">{activeTemplate.name}</CardTitle>

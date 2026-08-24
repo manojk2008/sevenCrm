@@ -57,7 +57,7 @@ function AccessCell({ level }: { level: AccessLevel }) {
 export function PermissionsMatrix() {
   return (
     <div className="space-y-3 mt-4">
-      <div className="border rounded-2xl overflow-hidden bg-card">
+      <div className="border rounded-xl overflow-hidden bg-card">
         <div className="overflow-x-auto">
           <Table>
             <TableHeader>

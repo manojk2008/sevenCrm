@@ -19,7 +19,7 @@ export function MonthlyComparison() {
       transition={{ delay: 1.0 }}
       className="flex-1 h-full"
     >
-      <Card className="h-full rounded-2xl border-slate-200 dark:border-slate-800 shadow-sm flex flex-col">
+      <Card className="h-full rounded-xl shadow-sm flex flex-col">
         <CardHeader className="pb-0">
           <CardTitle className="text-lg font-semibold">Performance Comparison</CardTitle>
           <CardDescription>This month vs last month</CardDescription>
@@ -30,18 +30,18 @@ export function MonthlyComparison() {
               data={data}
               margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
             >
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
               <XAxis 
                 dataKey="name" 
                 axisLine={false} 
                 tickLine={false}
-                tick={{ fontSize: 12, fill: '#64748b' }}
+                tick={{ fontSize: 12, fill: 'var(--muted-foreground)' }}
                 dy={10}
               />
               <YAxis 
                 axisLine={false} 
                 tickLine={false}
-                tick={{ fontSize: 12, fill: '#64748b' }}
+                tick={{ fontSize: 12, fill: 'var(--muted-foreground)' }}
               />
               <Tooltip 
                 cursor={{ fill: 'transparent' }}
@@ -53,8 +53,8 @@ export function MonthlyComparison() {
                 iconType="circle"
                 wrapperStyle={{ fontSize: '12px', paddingBottom: '10px' }}
               />
-              <Bar dataKey="previous" name="Last Month" fill="#cbd5e1" radius={[4, 4, 0, 0]} barSize={12} />
-              <Bar dataKey="current" name="This Month" fill="#4f46e5" radius={[4, 4, 0, 0]} barSize={12} />
+              <Bar dataKey="previous" name="Last Month" fill="var(--muted-foreground)" radius={[4, 4, 0, 0]} barSize={12} />
+              <Bar dataKey="current" name="This Month" fill="var(--chart-1)" radius={[4, 4, 0, 0]} barSize={12} />
             </BarChart>
           </ResponsiveContainer>
         </CardContent>

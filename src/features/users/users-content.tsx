@@ -122,10 +122,10 @@ export function UsersContent() {
   };
 
   return (
-    <div className="flex-1 space-y-6 p-4 md:p-8 pt-6">
+    <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">User Management</h2>
+          <h1 className="text-3xl font-bold tracking-tight">User Management</h1>
           <p className="text-muted-foreground">Manage team members and permissions</p>
         </div>
 
@@ -162,10 +162,10 @@ export function UsersContent() {
             <Popover>
               <PopoverTrigger
                 render={
-                  <Button variant="outline" size="icon" className="rounded-xl relative">
+                  <Button variant="outline" size="icon" aria-label="Filter users" className="rounded-xl relative">
                     <Filter className="h-4 w-4" />
                     {activeFilterCount > 0 && (
-                      <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-primary text-primary-foreground text-[10px] flex items-center justify-center">
+                      <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-primary text-primary-foreground text-[11px] flex items-center justify-center">
                         {activeFilterCount}
                       </span>
                     )}

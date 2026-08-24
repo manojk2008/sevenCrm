@@ -1,4 +1,31 @@
 import { type ID, type Priority, type Comment, type Attachment, type TimelineEvent } from "./common";
+import { type ProductGroupSummary, type ProductStatus } from "./product";
+
+/**
+ * A Product attached to an Enquiry, as returned by the backend's
+ * SafeEnquiryProduct (backend/src/enquiries/enquiries.service.ts).
+ *
+ * The relationship is keyed on `productId` — a stable Product id — never on
+ * the product's name. Every display field below is resolved live from the
+ * Product record on each read, so a renamed or repriced product is always
+ * shown with its current values. `status` is carried so an attached product
+ * that has since been deactivated can be marked as such rather than hidden.
+ *
+ * Reuses ProductGroupSummary/ProductStatus from ./product rather than
+ * redeclaring the product shape here.
+ */
+export interface EnquiryProduct {
+  /** Id of the Enquiry-Product relationship row itself. */
+  id: ID;
+  /** The attached Product's id — the source of truth for the relationship. */
+  productId: ID;
+  name: string;
+  productGroup: ProductGroupSummary;
+  price: number;
+  sku: string;
+  unit: string;
+  status: ProductStatus;
+}
 
 export type EnquiryStage =
   | "new"
@@ -36,7 +63,7 @@ export interface Enquiry {
   assignedToAvatar?: string;
   description?: string;
   notes?: string;
-  products: string[];
+  products: EnquiryProduct[];
   expectedCloseDate: string;
   lastActivityDate?: string;
   lostReason?: string;

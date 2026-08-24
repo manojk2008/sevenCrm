@@ -24,10 +24,10 @@ const revenueTrend = [
 ];
 
 const leadSources = [
-  { name: "Organic Search", value: 400, color: "hsl(var(--chart-1))" },
-  { name: "Referrals", value: 300, color: "hsl(var(--chart-2))" },
-  { name: "Social Media", value: 300, color: "hsl(var(--chart-3))" },
-  { name: "Direct", value: 200, color: "hsl(var(--chart-4))" },
+  { name: "Organic Search", value: 400, color: "var(--chart-1)" },
+  { name: "Referrals", value: 300, color: "var(--chart-2)" },
+  { name: "Social Media", value: 300, color: "var(--chart-3)" },
+  { name: "Direct", value: 200, color: "var(--chart-4)" },
 ];
 
 const funnelData = [
@@ -53,10 +53,10 @@ export function AnalyticsContent() {
   const [period, setPeriod] = useState("month");
 
   return (
-    <div className="flex-1 space-y-6 p-4 md:p-8 pt-6">
+    <div className="space-y-6">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">Analytics Dashboard</h2>
+          <h1 className="text-3xl font-bold tracking-tight">Analytics Dashboard</h1>
           <p className="text-muted-foreground">Deep dive into your business metrics</p>
         </div>
         <Tabs value={period} onValueChange={setPeriod} className="w-[400px]">
@@ -80,7 +80,7 @@ export function AnalyticsContent() {
       </div>
 
       <div className="grid md:grid-cols-2 gap-6">
-        <Card className="rounded-2xl">
+        <Card className="rounded-xl">
           <CardHeader>
             <CardTitle>Revenue Trends</CardTitle>
             <CardDescription>Comparison with previous period</CardDescription>
@@ -91,8 +91,8 @@ export function AnalyticsContent() {
                 <AreaChart data={revenueTrend}>
                   <defs>
                     <linearGradient id="colorThisYear" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3}/>
-                      <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0}/>
+                      <stop offset="5%" stopColor="var(--primary)" stopOpacity={0.3}/>
+                      <stop offset="95%" stopColor="var(--primary)" stopOpacity={0}/>
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} />
@@ -100,15 +100,15 @@ export function AnalyticsContent() {
                   <YAxis />
                   <Tooltip />
                   <Legend />
-                  <Area type="monotone" dataKey="thisYear" name="This Period" stroke="hsl(var(--primary))" fill="url(#colorThisYear)" />
-                  <Area type="monotone" dataKey="lastYear" name="Last Period" stroke="hsl(var(--muted-foreground))" fill="none" strokeDasharray="5 5" />
+                  <Area type="monotone" dataKey="thisYear" name="This Period" stroke="var(--primary)" fill="url(#colorThisYear)" />
+                  <Area type="monotone" dataKey="lastYear" name="Last Period" stroke="var(--muted-foreground)" fill="none" strokeDasharray="5 5" />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="rounded-2xl">
+        <Card className="rounded-xl">
           <CardHeader>
             <CardTitle>Sales Funnel</CardTitle>
             <CardDescription>Conversion across stages</CardDescription>
@@ -137,7 +137,7 @@ export function AnalyticsContent() {
       </div>
 
       <div className="grid md:grid-cols-2 gap-6">
-        <Card className="rounded-2xl">
+        <Card className="rounded-xl">
           <CardHeader>
             <CardTitle>Lead Sources</CardTitle>
           </CardHeader>
@@ -158,7 +158,7 @@ export function AnalyticsContent() {
           </CardContent>
         </Card>
 
-        <Card className="rounded-2xl">
+        <Card className="rounded-xl">
           <CardHeader>
             <CardTitle>Executive Radar</CardTitle>
           </CardHeader>
@@ -169,8 +169,8 @@ export function AnalyticsContent() {
                   <PolarGrid />
                   <PolarAngleAxis dataKey="subject" />
                   <PolarRadiusAxis angle={30} domain={[0, 150]} />
-                  <Radar name="Executive A" dataKey="A" stroke="hsl(var(--primary))" fill="hsl(var(--primary))" fillOpacity={0.6} />
-                  <Radar name="Executive B" dataKey="B" stroke="hsl(var(--chart-2))" fill="hsl(var(--chart-2))" fillOpacity={0.6} />
+                  <Radar name="Executive A" dataKey="A" stroke="var(--primary)" fill="var(--primary)" fillOpacity={0.6} />
+                  <Radar name="Executive B" dataKey="B" stroke="var(--chart-2)" fill="var(--chart-2)" fillOpacity={0.6} />
                   <Legend />
                   <Tooltip />
                 </RadarChart>
@@ -185,7 +185,7 @@ export function AnalyticsContent() {
 
 function KpiCard({ title, value, trend, icon: Icon, up }: any) {
   return (
-    <Card className="rounded-2xl">
+    <Card className="rounded-xl">
       <CardContent className="p-4 flex flex-col justify-between h-full">
         <div className="flex justify-between items-start mb-4">
           <span className="text-sm font-medium text-muted-foreground">{title}</span>

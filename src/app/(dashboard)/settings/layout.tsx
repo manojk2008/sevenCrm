@@ -40,11 +40,11 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
   const pathname = usePathname();
 
   return (
-    <div className="flex-1 flex flex-col md:flex-row gap-8 p-4 md:p-8 pt-6">
-      <aside className="w-full md:w-64 shrink-0 space-y-6">
+    <div className="flex flex-col gap-8 md:flex-row">
+      <aside className="w-full shrink-0 space-y-6 md:w-64">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight mb-1">Settings</h2>
-          <p className="text-muted-foreground text-sm">Manage your application preferences</p>
+          <h1 className="mb-1 text-3xl font-bold tracking-tight">Settings</h1>
+          <p className="text-sm text-muted-foreground">Manage your application preferences</p>
         </div>
         
         <nav className="space-y-6">
@@ -79,11 +79,13 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
           ))}
         </nav>
       </aside>
-      <main className="flex-1 min-w-0">
-        <div className="bg-card border rounded-3xl p-6 shadow-sm min-h-[600px]">
+      {/* A plain div, not <main> — the dashboard shell already owns the
+          main landmark, and nesting a second one breaks landmark navigation. */}
+      <div className="min-w-0 flex-1">
+        <div className="min-h-[600px] rounded-xl border bg-card p-6 shadow-sm">
           {children}
         </div>
-      </main>
+      </div>
     </div>
   );
 }

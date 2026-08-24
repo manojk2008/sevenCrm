@@ -42,13 +42,18 @@ export default function DashboardLayout({
   if (!sessionChecked || !isAuthenticated) return null;
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
+    <div className="flex h-screen overflow-x-clip bg-background">
       <Sidebar />
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <Topbar />
-        <main id="main-content" className="flex-1 overflow-y-auto scrollbar-thin">
+        <main id="main-content" className="scrollbar-thin flex-1 overflow-y-auto">
           <CommandPalette />
-          {children}
+          {/* Canonical content column. Routes previously each set their own
+              max-width (1600 / 1280 / 896 / none), so the column jumped on
+              every navigation. */}
+          <div className="mx-auto w-full max-w-[1400px] px-4 py-6 sm:px-6 sm:py-8">
+            {children}
+          </div>
         </main>
       </div>
     </div>

@@ -88,7 +88,7 @@ export function UserForm({ open, onOpenChange, user, onSubmit }: UserFormProps) 
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[440px] rounded-2xl">
+      <DialogContent className="max-w-[440px] rounded-xl">
         <DialogHeader>
           <DialogTitle>{isEditing ? "Edit User" : "Create User"}</DialogTitle>
           <DialogDescription>

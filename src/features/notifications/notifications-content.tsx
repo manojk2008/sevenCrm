@@ -105,15 +105,15 @@ export function NotificationsContent() {
   }, {} as Record<string, typeof notifications>);
 
   return (
-    <div className="flex-1 max-w-4xl mx-auto w-full p-4 md:p-8 pt-6 space-y-6">
+    <div className="mx-auto w-full max-w-4xl space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div className="flex items-center gap-3">
-          <div className="bg-primary/10 p-3 rounded-2xl text-primary">
+          <div className="bg-primary/10 p-3 rounded-xl text-primary">
             <Bell className="h-6 w-6" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-3xl font-bold tracking-tight">Notifications</h2>
+              <h1 className="text-3xl font-bold tracking-tight">Notifications</h1>
               {unreadCount > 0 && (
                 <span className="bg-primary text-primary-foreground text-xs font-bold px-2 py-1 rounded-full">
                   {unreadCount} new
@@ -155,7 +155,7 @@ export function NotificationsContent() {
             Object.entries(grouped).map(([groupName, items]) => (
               <div key={groupName} className="space-y-3">
                 <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">{groupName}</h3>
-                <div className="bg-card border rounded-2xl overflow-hidden divide-y">
+                <div className="bg-card border rounded-xl overflow-hidden divide-y">
                   {items.map(notif => {
                     const Icon = notif.icon;
                     return (

@@ -56,7 +56,7 @@ export function RecentActivities() {
       transition={{ delay: 0.5 }}
       className="flex-1 h-full"
     >
-      <Card className="h-full rounded-2xl border-slate-200 dark:border-slate-800 shadow-sm flex flex-col">
+      <Card className="h-full rounded-xl shadow-sm flex flex-col">
         <CardHeader className="pb-4">
           <CardTitle className="text-lg font-semibold">Recent Activities</CardTitle>
           <CardDescription>Latest actions in the CRM</CardDescription>
@@ -72,10 +72,10 @@ export function RecentActivities() {
                   </div>
                   
                   {/* Card */}
-                  <div className="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] p-3 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 shadow-sm hover:shadow-md transition-shadow">
+                  <div className="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] p-3 rounded-xl border border-border bg-muted/40 shadow-sm hover:shadow-md transition-shadow">
                     <div className="flex items-center justify-between mb-1">
                       <h4 className="font-semibold text-sm">{act.title}</h4>
-                      <span className="text-[10px] font-medium text-muted-foreground">{act.time}</span>
+                      <span className="text-[11px] font-medium text-muted-foreground">{act.time}</span>
                     </div>
                     <p className="text-xs text-muted-foreground line-clamp-2">{act.desc}</p>
                   </div>

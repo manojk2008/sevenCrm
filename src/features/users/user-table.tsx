@@ -34,7 +34,7 @@ export function UserTable({ users, onEdit, onToggleStatus }: UserTableProps) {
 
   return (
     <>
-      <div className="border rounded-2xl overflow-hidden bg-card">
+      <div className="border rounded-xl overflow-hidden bg-card">
         <Table>
           <TableHeader className="bg-muted/50">
             <TableRow>
@@ -141,7 +141,7 @@ export function UserTable({ users, onEdit, onToggleStatus }: UserTableProps) {
       </div>
 
       <Dialog open={!!viewingUser} onOpenChange={(open) => !open && setViewingUser(null)}>
-        <DialogContent className="max-w-[400px] rounded-2xl">
+        <DialogContent className="max-w-[400px] rounded-xl">
           <DialogHeader>
             <DialogTitle>User Details</DialogTitle>
             <DialogDescription>Read-only overview of this team member.</DialogDescription>

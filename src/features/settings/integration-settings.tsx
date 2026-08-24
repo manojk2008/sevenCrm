@@ -10,7 +10,7 @@ export function IntegrationSettings() {
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="text-2xl font-semibold">Integrations</h3>
+        <h2 className="text-xl font-semibold tracking-tight">Integrations</h2>
         <p className="text-sm text-muted-foreground">
           Connect SevenCRM with your favorite tools and services.
         </p>
@@ -19,7 +19,7 @@ export function IntegrationSettings() {
       <div className="h-px bg-border w-full my-6" />
 
       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <Card className="rounded-2xl border-border/50 hover:shadow-md transition-shadow relative overflow-hidden">
+        <Card className="rounded-xl border-border/50 hover:shadow-md transition-shadow relative overflow-hidden">
           <div className="absolute top-0 right-0 p-4">
             <Badge variant="outline" className="bg-amber-100 text-amber-800 border-amber-200">Coming Soon</Badge>
           </div>
@@ -39,7 +39,7 @@ export function IntegrationSettings() {
           </CardContent>
         </Card>
 
-        <Card className="rounded-2xl border-border/50 shadow-sm relative overflow-hidden border-primary/20">
+        <Card className="rounded-xl border-border/50 shadow-sm relative overflow-hidden border-primary/20">
           <div className="absolute top-0 right-0 p-4">
             <Badge className="bg-green-500 hover:bg-green-600 flex gap-1 items-center">
               <Check className="h-3 w-3" /> Active
@@ -61,7 +61,7 @@ export function IntegrationSettings() {
           </CardContent>
         </Card>
 
-        <Card className="rounded-2xl border-border/50 hover:shadow-md transition-shadow relative overflow-hidden">
+        <Card className="rounded-xl border-border/50 hover:shadow-md transition-shadow relative overflow-hidden">
           <div className="absolute top-0 right-0 p-4">
             <Badge variant="outline" className="text-muted-foreground">Disconnected</Badge>
           </div>

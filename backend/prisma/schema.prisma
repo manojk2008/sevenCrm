@@ -42,6 +42,24 @@ model User {
   status         UserStatus   @default(ACTIVE)
   lastActiveAt   DateTime?
 
+  // Clients this user is the CRM-assigned owner of. Nullable on Client, and
+  // set to null (not restricted) if this user is removed as the assignee —
+  // see Client.assignedTo below.
+  assignedClients Client[] @relation("ClientAssignedTo")
+
+  // Same pattern as assignedClients: nullable on Enquiry, set to null (not
+  // restricted) if this user is removed as the assignee — see
+  // Enquiry.assignedTo below.
+  assignedEnquiries Enquiry[] @relation("EnquiryAssignedTo")
+
+  // Same pattern as assignedClients/assignedEnquiries — see
+  // Quotation.assignedTo below.
+  assignedQuotations Quotation[] @relation("QuotationAssignedTo")
+
+  // Same pattern as assignedClients/assignedEnquiries/assignedQuotations —
+  // see FollowUp.assignedTo below.
+  assignedFollowUps FollowUp[] @relation("FollowUpAssignedTo")
+
   // --- Better Auth `admin` plugin fields ---
   // Kept separate from the CRM `role` enum above: this stores Better Auth's
   // own internal admin-plugin role concept (a free-text string it manages),
@@ -116,9 +134,490 @@ model Organization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users User[]
+  users         User[]
+  clients       Client[]
+  enquiries     Enquiry[]
+  products      Product[]
+  productGroups ProductGroup[]
+  quotations    Quotation[]
+  followUps     FollowUp[]
 
   @@map("organization")
+}
+
+model Client {
+  id String @id @default(cuid())
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  // Nullable: a client can be unassigned, and unassigning must never block
+  // removing/reassigning the User (SetNull, not Restrict/Cascade). Must be
+  // validated at the service layer to belong to the same organizationId as
+  // the client — Prisma/Postgres cannot express a tenant-scoped FK here.
+  assignedToId String?
+  assignedTo   User?   @relation("ClientAssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  companyName String
+  industry    String
+  website     String?
+  email       String
+  phone       String
+  gstNumber   String?
+  status      ClientStatus @default(ACTIVE)
+
+  // Required by the business rule that deactivating a client (status ->
+  // INACTIVE) must record why; enforced at the service/DTO layer, not the
+  // database, since it's conditional on status rather than always-required.
+  churnReason String?
+
+  tags  String[] @default([])
+  notes String?
+
+  addressLine1   String
+  addressLine2   String?
+  addressCity    String
+  addressState   String
+  addressPincode String
+  addressCountry String  @default("India")
+
+  // Denormalized for now — display-only counters until Enquiries/Quotations
+  // exist to derive them from. Not treated as directly user-editable data.
+  totalDeals   Int     @default(0)
+  totalRevenue Decimal @default(0) @db.Decimal(14, 2)
+
+  contacts   ClientContact[]
+  enquiries  Enquiry[]
+  quotations Quotation[]
+  followUps  FollowUp[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, email])
+  @@unique([organizationId, gstNumber])
+  @@index([organizationId, status])
+  @@index([organizationId, companyName])
+  @@index([assignedToId])
+  @@map("client")
+}
+
+model ClientContact {
+  id       String @id @default(cuid())
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  name        String
+  email       String?
+  phone       String?
+  designation String?
+  isPrimary   Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([clientId])
+  @@map("client_contact")
+}
+
+model Enquiry {
+  id String @id @default(cuid())
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  // Required: every enquiry belongs to exactly one client. Restrict (not
+  // Cascade) so deleting a client with enquiries fails loudly instead of
+  // silently destroying enquiry history.
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  // Nullable: an enquiry can be unassigned, and unassigning must never block
+  // removing/reassigning the User (SetNull, not Restrict/Cascade). Must be
+  // validated at the service layer to belong to the same organizationId as
+  // the enquiry — Prisma/Postgres cannot express a tenant-scoped FK here.
+  assignedToId String?
+  assignedTo   User?   @relation("EnquiryAssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  title             String
+  stage             EnquiryStage  @default(NEW)
+  expectedRevenue   Decimal       @db.Decimal(14, 2)
+  probability       Int
+  priority          Priority
+  source            EnquirySource
+  description       String?
+  notes             String?
+  expectedCloseDate DateTime
+
+  // Only meaningful when stage = LOST; not enforced at the database level
+  // since it's conditional on stage rather than always-required (same
+  // approach as Client.churnReason).
+  lostReason String?
+
+  tags String[] @default([])
+
+  // Products this enquiry is about. Many-to-many through an explicit join
+  // model (never a productId column or a list of product names) so the
+  // relationship is keyed on stable Product ids and can be extended later.
+  // Cascade: the join rows describe this enquiry and nothing else, so they
+  // are meaningless without it.
+  enquiryProducts EnquiryProduct[]
+
+  // An enquiry may accumulate multiple quotations over time (e.g.
+  // revisions); the relation is intentionally not unique — see
+  // Quotation.enquiryId.
+  quotations Quotation[]
+
+  // Follow-ups scheduled against this enquiry. Optional on the FollowUp side
+  // (SetNull) — see FollowUp.enquiryId.
+  followUps FollowUp[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId, stage])
+  @@index([organizationId, clientId])
+  @@index([organizationId, priority])
+  @@index([assignedToId])
+  @@index([organizationId, expectedCloseDate])
+  @@map("enquiry")
+}
+
+model ProductGroup {
+  id String @id @default(cuid())
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  name        String
+  description String?
+  status      ProductGroupStatus @default(ACTIVE)
+
+  products Product[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, name])
+  @@index([organizationId, status])
+  @@map("product_group")
+}
+
+model Product {
+  id String @id @default(cuid())
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  // Required: every product belongs to exactly one ProductGroup (Phase 1,
+  // no many-to-many yet). Restrict, not SetNull, since the field is
+  // non-nullable — mirrors Enquiry.client's required-FK precedent.
+  productGroupId String
+  productGroup   ProductGroup @relation(fields: [productGroupId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  name        String
+  description String?
+  price       Decimal       @db.Decimal(14, 2)
+  sku         String?
+  unit        String?
+  status      ProductStatus @default(ACTIVE)
+
+  // Back-relation for the Enquiry <-> Product join. Restrict on the join
+  // side (see EnquiryProduct.product): a product that an enquiry still
+  // references must not disappear out from under it.
+  enquiryProducts EnquiryProduct[]
+
+  // Back-relation for QuotationLineItem.product (Restrict — same reasoning
+  // as enquiryProducts above). A line item's productNameSnapshot/
+  // unitPriceSnapshot are captured independently at creation time, so this
+  // relation is only ever used to validate/lookup, never to derive
+  // historical quotation values — see QuotationLineItem below.
+  quotationLineItems QuotationLineItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId, status])
+  @@index([organizationId, productGroupId])
+  @@map("product")
+}
+
+// Join model for the many-to-many Enquiry <-> Product relationship.
+//
+// Deliberately carries no pricing data (unitPrice/quantity/discount/tax):
+// this is only the relationship. Price snapshots belong to Quotations, which
+// does not exist yet, and inventing them here would bake in a pricing model
+// before that module defines one.
+//
+// There is no updatedAt: the row has no mutable columns — attaching and
+// detaching a product creates and deletes a row rather than editing one.
+//
+// Organization isolation is NOT expressible here: Postgres cannot enforce
+// "enquiry.organizationId = product.organizationId" through foreign keys, so
+// EnquiriesService verifies it explicitly before any row is written (the
+// same reason Client.assignedToId / Enquiry.clientId are service-validated).
+model EnquiryProduct {
+  id String @id @default(cuid())
+
+  enquiryId String
+  enquiry   Enquiry @relation(fields: [enquiryId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  createdAt DateTime @default(now())
+
+  // Makes attaching the same product to the same enquiry twice impossible at
+  // the database level, not just in the service. Also serves as the index
+  // for "all products on this enquiry" (enquiryId is its leading column), so
+  // no separate @@index([enquiryId]) is added.
+  @@unique([enquiryId, productId])
+  // Reverse direction: "which enquiries reference this product", and backs
+  // the productId foreign key check.
+  @@index([productId])
+  @@map("enquiry_product")
+}
+
+// A Quotation always belongs to exactly one Client. It may optionally be
+// linked to the Enquiry it was raised from — enquiryId is deliberately not
+// unique, so one Enquiry can accumulate multiple Quotations (e.g. revisions)
+// over time (Phase 6B approved architecture). A Quotation can also exist
+// with no Enquiry at all (created directly from a Client).
+model Quotation {
+  id String @id @default(cuid())
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  // Required: every quotation belongs to exactly one client. Restrict (not
+  // Cascade), same reasoning as Enquiry.clientId — deleting a client with
+  // quotations must fail loudly rather than silently destroy quotation
+  // history. Never re-parented after creation (see UpdateQuotationDto),
+  // mirroring UpdateEnquiryDto's exclusion of clientId for the same reason.
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  // Optional. Nullable FK -> SetNull (same pattern as assignedToId below):
+  // unlinking an enquiry (e.g. if it were ever removed) must never block
+  // that removal, and the quotation survives with enquiryId cleared rather
+  // than being destroyed. Validated at the service layer to belong to the
+  // same organizationId (and the same clientId) as the quotation — Prisma/
+  // Postgres cannot express either constraint through a foreign key.
+  enquiryId String?
+  enquiry   Enquiry? @relation(fields: [enquiryId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  // Nullable: a quotation can be unassigned, and unassigning must never
+  // block removing/reassigning the User (SetNull, not Restrict/Cascade).
+  // Must be validated at the service layer to belong to the same
+  // organizationId as the quotation — same precedent as Client.assignedToId
+  // / Enquiry.assignedToId.
+  assignedToId String?
+  assignedTo   User?   @relation("QuotationAssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  // Human-readable, organization-scoped, sequential document number (e.g.
+  // QT-2026-0001). Generated server-side by QuotationsService using
+  // QuotationNumberCounter — never client-supplied. The composite unique
+  // constraint is the database-level backstop behind that generator.
+  quotationNumber String
+
+  status QuotationStatus @default(DRAFT)
+
+  validUntil DateTime
+  notes      String?
+  terms      String?
+
+  // Denormalized totals, computed server-side from the line items at
+  // create/update time using Decimal-safe arithmetic (see
+  // QuotationsService.calculateTotals) and persisted so a read never has to
+  // re-derive them. Never trusted from client input.
+  subtotal       Decimal @db.Decimal(14, 2)
+  discountAmount Decimal @db.Decimal(14, 2)
+  taxAmount      Decimal @db.Decimal(14, 2)
+  grandTotal     Decimal @db.Decimal(14, 2)
+
+  lineItems QuotationLineItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Backs the numbering generator's ON CONFLICT target and guarantees
+  // uniqueness of the human-readable number within an organization.
+  @@unique([organizationId, quotationNumber])
+  @@index([organizationId, status])
+  @@index([organizationId, clientId])
+  @@index([organizationId, enquiryId])
+  @@index([assignedToId])
+  @@map("quotation")
+}
+
+// A single line on a Quotation. May optionally reference a catalog Product
+// (productId) or be a fully ad-hoc / custom line (productId = null) —
+// Phase 6B approved architecture, see QuotationsService.resolveLineItems.
+//
+// productNameSnapshot and unitPriceSnapshot are captured once, at the time
+// the line is created (or replaced — see QuotationsService.update), and are
+// never re-derived from the live Product afterwards. This is what keeps
+// quotation history independent of later Product price/name changes: the
+// Product relation below exists only for validation and for letting a
+// caller look up the current catalog state, never as the source of the
+// snapshot values themselves.
+model QuotationLineItem {
+  id String @id @default(cuid())
+
+  quotationId String
+  // Cascade: a line item describes its quotation and nothing else, so it is
+  // meaningless without it — same reasoning as EnquiryProduct.enquiry.
+  quotation   Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  // Nullable: null means this is an ad-hoc/custom line with no catalog
+  // Product behind it. When present, Restrict — same reasoning as
+  // EnquiryProduct.product: a product a quotation line still references
+  // must not disappear out from under it. (Products are never hard-deleted
+  // in this codebase, so this is currently unreachable, but kept for
+  // schema-level safety.)
+  productId String?
+  product   Product? @relation(fields: [productId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  productNameSnapshot String
+  description         String?
+
+  // Decimal, not Int: Product.unit is free-text and organization-defined
+  // (piece, kg, hour, license, service, ...), so fractional quantities
+  // (e.g. 2.5 hours of consulting) must be representable. Same @db.Decimal
+  // precision family as the other monetary/quantity fields on this model.
+  quantity Decimal @db.Decimal(12, 2)
+
+  unitPriceSnapshot  Decimal @db.Decimal(14, 2)
+  discountPercentage Decimal @db.Decimal(5, 2)
+  taxRate            Decimal @db.Decimal(5, 2)
+
+  // gross = quantity * unitPriceSnapshot
+  // discount = gross * discountPercentage / 100
+  // taxable = gross - discount
+  // tax = taxable * taxRate / 100
+  // lineAmount = taxable + tax
+  // Persisted (not just derived at read time) so it never has to be
+  // recomputed from historical snapshot values, matching how
+  // Quotation.subtotal/grandTotal are persisted rather than derived.
+  lineAmount Decimal @db.Decimal(14, 2)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([quotationId])
+  @@index([productId])
+  @@map("quotation_line_item")
+}
+
+// Backing store for server-side quotation-number generation only — not a
+// general-purpose sequence utility. One row per (organizationId, year);
+// QuotationsService increments lastNumber atomically via a single
+// `INSERT ... ON CONFLICT DO UPDATE ... RETURNING` statement in the same
+// transaction as the Quotation write, so two concurrent creates in the same
+// org/year can never receive the same number.
+model QuotationNumberCounter {
+  organizationId String
+  year           Int
+  lastNumber     Int    @default(0)
+
+  @@id([organizationId, year])
+  @@map("quotation_number_counter")
+}
+
+// A scheduled interaction with a Client — a call, email, meeting, demo or
+// visit. Always belongs to exactly one Client; may optionally hang off the
+// Enquiry it relates to, and may optionally be assigned to a User.
+//
+// There is deliberately no OVERDUE status: "overdue" is derived at read time
+// from `status = SCHEDULED AND scheduledAt < now()` (see
+// FollowUpsService.toSafeFollowUp / the `overdue` list filter). Persisting it
+// would require a background job to keep the column truthful, and the value
+// would be stale the moment the clock moved past a scheduledAt.
+model FollowUp {
+  id String @id @default(cuid())
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  // Required: every follow-up is about exactly one client. Restrict (not
+  // Cascade), same reasoning as Enquiry.clientId / Quotation.clientId —
+  // deleting a client with follow-ups must fail loudly rather than silently
+  // destroy interaction history.
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  // Optional. Nullable FK -> SetNull (same pattern as Quotation.enquiryId):
+  // if the enquiry ever goes away the follow-up survives with enquiryId
+  // cleared rather than being destroyed. Validated at the service layer to
+  // belong to the same organizationId AND the same clientId as the
+  // follow-up — Prisma/Postgres cannot express either through a foreign key.
+  enquiryId String?
+  enquiry   Enquiry? @relation(fields: [enquiryId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  // Nullable: a follow-up can be unassigned, and unassigning must never
+  // block removing/reassigning the User (SetNull, not Restrict/Cascade).
+  // Service-validated to be in the same organization — same precedent as
+  // Client/Enquiry/Quotation.assignedToId.
+  assignedToId String?
+  assignedTo   User?   @relation("FollowUpAssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  subject     String
+  description String?
+
+  type     FollowUpType
+  priority Priority
+  status   FollowUpStatus @default(SCHEDULED)
+
+  scheduledAt DateTime
+  // Generated server-side when status moves to COMPLETED — never accepted
+  // from client input (see UpdateFollowUpStatusDto).
+  completedAt DateTime?
+  // Required by the business rule that completing a follow-up must record
+  // what happened; enforced at the service/DTO layer, not the database,
+  // since it's conditional on status rather than always-required (same
+  // approach as Client.churnReason / Enquiry.lostReason).
+  outcome     String?
+  notes       String?
+
+  // A plain flag the user sets on the follow-up. There is no notification
+  // engine behind it in this phase — nothing reads it to send anything, and
+  // no reminder *offset* is stored, because none is delivered.
+  reminder Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId, status])
+  @@index([organizationId, scheduledAt])
+  @@index([organizationId, clientId])
+  @@index([organizationId, enquiryId])
+  @@index([organizationId, priority])
+  @@index([assignedToId])
+  @@map("follow_up")
+}
+
+enum FollowUpType {
+  CALL
+  EMAIL
+  MEETING
+  DEMO
+  VISIT
+}
+
+// Deliberately three values only. OVERDUE is a derived, display-only state —
+// see the FollowUp model comment above.
+enum FollowUpStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+}
+
+enum QuotationStatus {
+  DRAFT
+  SENT
+  ACCEPTED
+  REJECTED
+  EXPIRED
 }
 
 enum UserRole {
@@ -131,4 +630,53 @@ enum UserStatus {
   ACTIVE
   INACTIVE
   INVITED
+}
+
+enum ClientStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum EnquiryStage {
+  NEW
+  CONTACTED
+  FOLLOW_UP
+  QUOTATION_SENT
+  NEGOTIATION
+  WON
+  LOST
+}
+
+enum EnquirySource {
+  WEBSITE
+  REFERRAL
+  COLD_CALL
+  SOCIAL_MEDIA
+  EMAIL
+  TRADE_SHOW
+  ADVERTISEMENT
+  PARTNER
+  OTHER
+}
+
+// No existing backend representation of priority (frontend-only, and used
+// generically across multiple entities — see src/types/common.ts). Confirmed
+// with the user before adding: values mirror the frontend's
+// low/medium/high/urgent exactly, using the same UPPER_SNAKE convention as
+// EnquiryStage/EnquirySource above.
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum ProductStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum ProductGroupStatus {
+  ACTIVE
+  INACTIVE
 }

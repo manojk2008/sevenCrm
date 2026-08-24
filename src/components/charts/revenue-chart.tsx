@@ -38,24 +38,24 @@ export function RevenueChart({ data, loading }: RevenueChartProps) {
         >
           <defs>
             <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="#4f46e5" stopOpacity={0.3} />
-              <stop offset="95%" stopColor="#4f46e5" stopOpacity={0} />
+              <stop offset="5%" stopColor="var(--chart-1)" stopOpacity={0.3} />
+              <stop offset="95%" stopColor="var(--chart-1)" stopOpacity={0} />
             </linearGradient>
             <linearGradient id="colorPrevious" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="#94a3b8" stopOpacity={0.1} />
-              <stop offset="95%" stopColor="#94a3b8" stopOpacity={0} />
+              <stop offset="5%" stopColor="var(--muted-foreground)" stopOpacity={0.1} />
+              <stop offset="95%" stopColor="var(--muted-foreground)" stopOpacity={0} />
             </linearGradient>
           </defs>
           <XAxis
             dataKey="month"
-            stroke="#888888"
+            stroke="var(--muted-foreground)"
             fontSize={12}
             tickLine={false}
             axisLine={false}
             dy={10}
           />
           <YAxis
-            stroke="#888888"
+            stroke="var(--muted-foreground)"
             fontSize={12}
             tickLine={false}
             axisLine={false}
@@ -94,7 +94,7 @@ export function RevenueChart({ data, loading }: RevenueChartProps) {
             <Area
               type="monotone"
               dataKey="previousYear"
-              stroke="#94a3b8"
+              stroke="var(--muted-foreground)"
               strokeWidth={2}
               strokeDasharray="4 4"
               fillOpacity={1}
@@ -104,7 +104,7 @@ export function RevenueChart({ data, loading }: RevenueChartProps) {
           <Area
             type="monotone"
             dataKey="revenue"
-            stroke="#4f46e5"
+            stroke="var(--chart-1)"
             strokeWidth={2}
             fillOpacity={1}
             fill="url(#colorRevenue)"

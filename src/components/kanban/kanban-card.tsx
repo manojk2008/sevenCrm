@@ -51,17 +51,17 @@ export function KanbanCard({ enquiry, onClick, isOverlay }: KanbanCardProps) {
     <div
       ref={setNodeRef}
       style={style}
-      className={`group w-full bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl p-3 shadow-sm hover:shadow-md transition-shadow cursor-pointer relative ${
+      className={`group w-full bg-card border rounded-xl p-3 shadow-sm hover:shadow-md transition-shadow cursor-pointer relative ${
         isOverlay ? "rotate-2 scale-105 shadow-xl ring-2 ring-indigo-500" : ""
       }`}
       onClick={onClick}
     >
       <div className="flex items-start justify-between mb-2 gap-2">
         <div className="flex-1 min-w-0">
-          <p className="text-xs font-semibold text-slate-900 dark:text-slate-100 truncate">
+          <p className="text-xs font-semibold text-foreground truncate">
             {enquiry.clientCompany || enquiry.clientName}
           </p>
-          <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">{enquiry.title}</p>
+          <p className="text-xs text-muted-foreground truncate mt-0.5">{enquiry.title}</p>
         </div>
         
         {/* Drag Handle */}
@@ -76,7 +76,7 @@ export function KanbanCard({ enquiry, onClick, isOverlay }: KanbanCardProps) {
       </div>
 
       <div className="flex items-center gap-2 mb-3">
-        <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded border uppercase tracking-wider ${pColor}`}>
+        <span className={`text-[11px] font-medium px-1.5 py-0.5 rounded border uppercase tracking-wider ${pColor}`}>
           {enquiry.priority}
         </span>
         <span className="text-sm font-bold text-slate-700 dark:text-slate-200">
@@ -84,13 +84,13 @@ export function KanbanCard({ enquiry, onClick, isOverlay }: KanbanCardProps) {
         </span>
       </div>
 
-      <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-1.5 mb-3">
+      <div className="w-full bg-muted rounded-full h-1.5 mb-3">
         <div className="bg-indigo-500 h-1.5 rounded-full" style={{ width: `${enquiry.probability || 0}%` }} />
       </div>
 
       <div className="flex items-center justify-between text-xs text-slate-500">
         <div className="flex items-center gap-1.5">
-          <div className="w-5 h-5 rounded-full bg-indigo-100 dark:bg-indigo-900 flex items-center justify-center text-[9px] font-bold text-indigo-700 dark:text-indigo-300">
+          <div className="w-5 h-5 rounded-full bg-indigo-100 dark:bg-indigo-900 flex items-center justify-center text-[11px] font-bold text-indigo-700 dark:text-indigo-300">
             {enquiry.assignedToName?.charAt(0) || "U"}
           </div>
           <span className="truncate max-w-[80px]">{enquiry.assignedToName?.split(" ")[0]}</span>

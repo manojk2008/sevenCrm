@@ -22,7 +22,7 @@ export function BackupSettings() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h3 className="text-2xl font-semibold">Backup & Restore</h3>
+          <h2 className="text-xl font-semibold tracking-tight">Backup & Restore</h2>
           <p className="text-sm text-muted-foreground">
             Manage your data backups to ensure business continuity.
           </p>
@@ -35,7 +35,7 @@ export function BackupSettings() {
       <div className="h-px bg-border w-full my-6" />
 
       <div className="grid sm:grid-cols-2 gap-6 mb-8">
-        <div className="bg-primary/5 border border-primary/20 p-6 rounded-2xl flex items-center gap-4">
+        <div className="bg-primary/5 border border-primary/20 p-6 rounded-xl flex items-center gap-4">
           <div className="p-3 bg-primary/10 text-primary rounded-xl">
             <RefreshCw className="h-6 w-6" />
           </div>
@@ -44,7 +44,7 @@ export function BackupSettings() {
             <p className="text-xl font-bold">Today, 02:00 AM</p>
           </div>
         </div>
-        <div className="bg-muted/50 border p-6 rounded-2xl flex items-center gap-4">
+        <div className="bg-muted/50 border p-6 rounded-xl flex items-center gap-4">
           <div className="p-3 bg-background text-muted-foreground rounded-xl shadow-sm">
             <HardDrive className="h-6 w-6" />
           </div>
@@ -57,7 +57,7 @@ export function BackupSettings() {
 
       <div>
         <h4 className="font-semibold mb-4 text-lg">Backup History</h4>
-        <div className="border rounded-2xl overflow-hidden">
+        <div className="border rounded-xl overflow-hidden">
           <Table>
             <TableHeader className="bg-muted/50">
               <TableRow>

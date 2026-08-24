@@ -40,7 +40,7 @@ export function StatCard({
       whileHover={{ y: -2 }}
       transition={{ duration: 0.2 }}
       className={cn(
-        'rounded-2xl border bg-card p-6 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden',
+        'rounded-xl border bg-card p-6 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden',
         href ? 'cursor-pointer' : ''
       )}
     >

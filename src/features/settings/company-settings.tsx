@@ -55,7 +55,7 @@ export function CompanySettings() {
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="text-2xl font-semibold">Company Profile</h3>
+        <h2 className="text-xl font-semibold tracking-tight">Company Profile</h2>
         <p className="text-sm text-muted-foreground">
           Update your company details and legal information.
         </p>

@@ -32,7 +32,7 @@ export function TodaysTasks() {
       transition={{ delay: 0.9 }}
       className="flex-1 h-full"
     >
-      <Card className="h-full rounded-2xl border-slate-200 dark:border-slate-800 shadow-sm flex flex-col">
+      <Card className="h-full rounded-xl shadow-sm flex flex-col">
         <CardHeader className="pb-3 flex flex-row items-start justify-between">
           <div className="space-y-1">
             <CardTitle className="text-lg font-semibold flex items-center gap-2">
@@ -43,7 +43,7 @@ export function TodaysTasks() {
           </div>
         </CardHeader>
         <CardContent className="flex-1 flex flex-col">
-          <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-1.5 mb-5 overflow-hidden">
+          <div className="w-full bg-muted rounded-full h-1.5 mb-5 overflow-hidden">
             <motion.div 
               className="bg-indigo-500 h-1.5 rounded-full"
               initial={{ width: 0 }}
@@ -68,9 +68,9 @@ export function TodaysTasks() {
                   {task.completed && <Check className="w-3 h-3" />}
                 </div>
                 <span className={cn(
-                  "text-sm select-none transition-all",
+                  "text-sm select-none transition-colors",
                   task.completed 
-                    ? "text-slate-400 dark:text-slate-500 line-through" 
+                    ? "text-muted-foreground line-through" 
                     : "text-slate-700 dark:text-slate-200"
                 )}>
                   {task.text}

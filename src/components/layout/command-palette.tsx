@@ -62,7 +62,7 @@ export function CommandPalette() {
             <PlusCircle className="mr-2 h-4 w-4 text-muted-foreground" />
             <span>New Enquiry</span>
           </CommandItem>
-          <CommandItem onSelect={() => runCommand(() => router.push("/quotations/new"))}>
+          <CommandItem onSelect={() => runCommand(() => router.push("/quotations/builder"))}>
             <PlusCircle className="mr-2 h-4 w-4 text-muted-foreground" />
             <span>New Quotation</span>
           </CommandItem>
