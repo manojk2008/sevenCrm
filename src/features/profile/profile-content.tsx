@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { useAuthStore } from "@/stores/auth-store";
+import { getFriendlyErrorMessage } from "@/lib/api";
+import { updateMyProfile } from "./api";
 import {
   User,
   Mail,
@@ -11,9 +13,7 @@ import {
   Key,
   Eye,
   EyeOff,
-  Camera,
   Save,
-  Bell,
   Palette,
   Clock,
   CheckCircle,
@@ -66,23 +66,30 @@ function getInitials(name: string): string {
 }
 
 export function ProfileContent() {
-  const { user } = useAuthStore();
+  const { user, setUser } = useAuthStore();
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [name, setName] = useState(user?.name ?? "");
+  const [department, setDepartment] = useState(user?.department ?? "");
 
   const handleSaveProfile = async () => {
+    if (!user || saving) return;
     setSaving(true);
-    await new Promise((r) => setTimeout(r, 1200));
-    setSaving(false);
-    toast.success("Profile updated successfully");
-  };
-
-  const handleChangePassword = async () => {
-    setSaving(true);
-    await new Promise((r) => setTimeout(r, 1000));
-    setSaving(false);
-    toast.success("Password changed successfully");
+    try {
+      const updated = await updateMyProfile({
+        name: name.trim(),
+        department: department.trim(),
+      });
+      setUser({ ...user, name: updated.name, department: updated.department });
+      setName(updated.name);
+      setDepartment(updated.department);
+      toast.success("Profile updated successfully");
+    } catch (error) {
+      toast.error(getFriendlyErrorMessage(error));
+    } finally {
+      setSaving(false);
+    }
   };
 
   if (!user) return null;
@@ -92,16 +99,11 @@ export function ProfileContent() {
       <motion.div variants={containerVariants} initial="hidden" animate="visible">
         {/* Header */}
         <motion.div variants={itemVariants} className="flex items-center gap-6 mb-8">
-          <div className="relative group">
-            <Avatar className="size-24 border-4 border-background shadow-elevated">
-              <AvatarFallback className="bg-primary text-primary-foreground text-2xl font-bold">
-                {getInitials(user.name)}
-              </AvatarFallback>
-            </Avatar>
-            <button className="absolute inset-0 flex items-center justify-center rounded-full bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity">
-              <Camera className="size-6 text-white" />
-            </button>
-          </div>
+          <Avatar className="size-24 border-4 border-background shadow-elevated">
+            <AvatarFallback className="bg-primary text-primary-foreground text-2xl font-bold">
+              {getInitials(user.name)}
+            </AvatarFallback>
+          </Avatar>
           <div>
             <h1 className="text-2xl font-bold tracking-tight">{user.name}</h1>
             <p className="text-muted-foreground">{user.email}</p>
@@ -147,25 +149,35 @@ export function ProfileContent() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-2">
                       <Label htmlFor="name">Full Name</Label>
-                      <Input id="name" defaultValue={user.name} />
+                      <Input
+                        id="name"
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                      />
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="email">Email Address</Label>
                       <div className="relative">
                         <Mail className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-                        <Input id="email" defaultValue={user.email} className="pl-10" />
+                        <Input id="email" defaultValue={user.email} className="pl-10" disabled />
                       </div>
+                      <p className="text-xs text-muted-foreground">Email can&apos;t be changed here.</p>
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="phone">Phone Number</Label>
                       <div className="relative">
                         <Phone className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-                        <Input id="phone" defaultValue="+91 98765 43210" className="pl-10" />
+                        <Input id="phone" placeholder="Not available" className="pl-10" disabled />
                       </div>
+                      <p className="text-xs text-muted-foreground">Phone numbers aren&apos;t supported yet.</p>
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="department">Department</Label>
-                      <Input id="department" defaultValue={user.department} disabled />
+                      <Input
+                        id="department"
+                        value={department}
+                        onChange={(e) => setDepartment(e.target.value)}
+                      />
                     </div>
                   </div>
                   <Separator />
@@ -191,8 +203,15 @@ export function ProfileContent() {
             <motion.div variants={itemVariants} className="space-y-6">
               <Card className="rounded-xl shadow-card">
                 <CardHeader>
-                  <CardTitle>Change Password</CardTitle>
-                  <CardDescription>Ensure your account stays secure</CardDescription>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle>Change Password</CardTitle>
+                      <CardDescription>Ensure your account stays secure</CardDescription>
+                    </div>
+                    <Badge variant="outline" className="text-amber-600 border-amber-300 bg-amber-50 dark:bg-amber-900/20">
+                      Not Available
+                    </Badge>
+                  </div>
                 </CardHeader>
                 <CardContent className="space-y-6 max-w-md">
                   <div className="space-y-2">
@@ -203,6 +222,7 @@ export function ProfileContent() {
                         id="current-password"
                         type={showCurrentPassword ? "text" : "password"}
                         className="pl-10 pr-10"
+                        disabled
                       />
                       <button
                         type="button"
@@ -221,6 +241,7 @@ export function ProfileContent() {
                         id="new-password"
                         type={showNewPassword ? "text" : "password"}
                         className="pl-10 pr-10"
+                        disabled
                       />
                       <button
                         type="button"
@@ -233,11 +254,14 @@ export function ProfileContent() {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="confirm-password">Confirm New Password</Label>
-                    <Input id="confirm-password" type="password" />
+                    <Input id="confirm-password" type="password" disabled />
                   </div>
-                  <Button onClick={handleChangePassword} disabled={saving}>
-                    {saving ? "Updating..." : "Update Password"}
+                  <Button disabled title="Password changes aren't available yet">
+                    Not Available
                   </Button>
+                  <p className="text-xs text-muted-foreground">
+                    Changing your password isn&apos;t supported yet.
+                  </p>
                 </CardContent>
               </Card>
 

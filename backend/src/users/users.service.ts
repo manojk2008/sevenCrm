@@ -12,6 +12,7 @@ import { UserRole, UserStatus } from '../../generated/prisma/enums';
 import type { AppSession } from '../auth/session.types';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { UpdateMyProfileDto } from './dto/update-my-profile.dto';
 import { UpdateUserStatusDto } from './dto/update-user-status.dto';
 
 type CurrentUser = AppSession['user'];
@@ -145,6 +146,27 @@ export class UsersService {
       data: {
         ...(dto.name !== undefined ? { name: dto.name } : {}),
         ...(dto.role !== undefined ? { role: dto.role } : {}),
+        ...(dto.department !== undefined ? { department: dto.department } : {}),
+      },
+    });
+    return this.toSafeUser(updated);
+  }
+
+  /**
+   * Self-service profile edit (PATCH /users/me). The target row is always
+   * the caller's own — `currentUser.id` comes from the authenticated
+   * session, never from the request body — so unlike `update()` there is no
+   * cross-user authorization check to perform: name and department are the
+   * only self-editable fields, and role/organizationId/email are untouched.
+   */
+  async updateMe(
+    dto: UpdateMyProfileDto,
+    currentUser: CurrentUser,
+  ): Promise<SafeUser> {
+    const updated = await prisma.user.update({
+      where: { id: currentUser.id },
+      data: {
+        ...(dto.name !== undefined ? { name: dto.name } : {}),
         ...(dto.department !== undefined ? { department: dto.department } : {}),
       },
     });
