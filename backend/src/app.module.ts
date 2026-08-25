@@ -4,6 +4,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { auth } from './auth/auth';
 import { UsersModule } from './users/users.module';
+import { OrganizationsModule } from './organizations/organizations.module';
 import { ClientsModule } from './clients/clients.module';
 import { EnquiriesModule } from './enquiries/enquiries.module';
 import { ProductGroupsModule } from './product-groups/product-groups.module';
@@ -20,6 +21,7 @@ import { SearchModule } from './search/search.module';
   imports: [
     AuthModule.forRoot({ auth }),
     UsersModule,
+    OrganizationsModule,
     ClientsModule,
     EnquiriesModule,
     ProductGroupsModule,
