@@ -60,6 +60,10 @@ model User {
   // see FollowUp.assignedTo below.
   assignedFollowUps FollowUp[] @relation("FollowUpAssignedTo")
 
+  // Same pattern as assignedClients/assignedEnquiries/assignedQuotations/
+  // assignedFollowUps — see Task.assignedTo below.
+  assignedTasks Task[] @relation("TaskAssignedTo")
+
   // --- Better Auth `admin` plugin fields ---
   // Kept separate from the CRM `role` enum above: this stores Better Auth's
   // own internal admin-plugin role concept (a free-text string it manages),
@@ -146,6 +150,7 @@ model Organization {
   productGroups ProductGroup[]
   quotations    Quotation[]
   followUps     FollowUp[]
+  tasks         Task[]
 
   @@map("organization")
 }
@@ -599,6 +604,46 @@ model FollowUp {
   @@index([organizationId, priority])
   @@index([assignedToId])
   @@map("follow_up")
+}
+
+// A generic personal/team to-do — deliberately independent of Client/Enquiry
+// (see FollowUp, which requires a client). Covers the "Team standup",
+// "Monthly report preparation" kind of item Follow-ups cannot represent.
+model Task {
+  id String @id @default(cuid())
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  // Nullable: a task can be unassigned (created by an Admin/Super Admin with
+  // no owner yet), and unassigning must never block removing/reassigning the
+  // User (SetNull, not Restrict/Cascade) — same precedent as
+  // Client/Enquiry/Quotation/FollowUp.assignedToId. Service-validated to be
+  // in the same organization.
+  assignedToId String?
+  assignedTo   User?   @relation("TaskAssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  title String
+
+  dueDate DateTime?
+
+  // Reuses the existing generic Priority enum (see FollowUp.priority) rather
+  // than introducing a second one.
+  priority Priority?
+
+  completed Boolean @default(false)
+  // Generated server-side when completed becomes true — never accepted from
+  // client input (see UpdateTaskStatusDto). Cleared when moved back to
+  // pending, same reasoning as FollowUp.completedAt.
+  completedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId, completed])
+  @@index([organizationId, dueDate])
+  @@index([assignedToId])
+  @@map("task")
 }
 
 enum FollowUpType {

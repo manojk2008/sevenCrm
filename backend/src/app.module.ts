@@ -11,6 +11,7 @@ import { ProductGroupsModule } from './product-groups/product-groups.module';
 import { ProductsModule } from './products/products.module';
 import { QuotationsModule } from './quotations/quotations.module';
 import { FollowUpsModule } from './follow-ups/follow-ups.module';
+import { TasksModule } from './tasks/tasks.module';
 import { SalesModule } from './sales/sales.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { AnalyticsModule } from './analytics/analytics.module';
@@ -28,6 +29,7 @@ import { SearchModule } from './search/search.module';
     ProductsModule,
     QuotationsModule,
     FollowUpsModule,
+    TasksModule,
     SalesModule,
     DashboardModule,
     AnalyticsModule,

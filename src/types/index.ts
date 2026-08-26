@@ -6,4 +6,5 @@ export * from './quotation';
 export * from './sales';
 export * from './notification';
 export * from './follow-up';
+export * from './task';
 export * from './product'
