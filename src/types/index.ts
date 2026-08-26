@@ -8,3 +8,4 @@ export * from './notification';
 export * from './follow-up';
 export * from './task';
 export * from './product'
+export * from './audit-log';

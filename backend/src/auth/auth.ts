@@ -3,6 +3,7 @@ import { admin } from 'better-auth/plugins';
 import { prismaAdapter } from '@better-auth/prisma-adapter';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../../generated/prisma/client';
+import { withAuditLogging } from '../audit-logs/audit.extension';
 
 function requireEnv(name: string): string {
   const value = process.env[name];
@@ -13,7 +14,12 @@ function requireEnv(name: string): string {
 }
 
 const adapter = new PrismaPg(requireEnv('DATABASE_URL'));
-export const prisma = new PrismaClient({ adapter });
+// Wrapped once, here, with the audit-logging Prisma Client Extension — every
+// consumer across the app imports this same `prisma` (including Better
+// Auth's own adapter below), so CREATE/UPDATE writes on an audited model
+// (see audit-logs/entity-config.ts) are logged transparently with no
+// explicit audit call anywhere else in the codebase.
+export const prisma = withAuditLogging(new PrismaClient({ adapter }));
 
 // Better Auth is the only identity source for SevenCRM — there is no
 // separate custom user/auth table. CRM-specific fields (organizationId,

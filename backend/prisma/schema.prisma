@@ -64,6 +64,12 @@ model User {
   // assignedFollowUps — see Task.assignedTo below.
   assignedTasks Task[] @relation("TaskAssignedTo")
 
+  // Audit events this user performed as actor. Nullable on AuditLog, and set
+  // to null (not restricted) if this user is removed — see
+  // AuditLog.actorId below. Unlike assignedClients/assignedEnquiries/etc.,
+  // this is a pure history relation: nothing ever re-parents it.
+  auditLogs AuditLog[] @relation("AuditLogActor")
+
   // --- Better Auth `admin` plugin fields ---
   // Kept separate from the CRM `role` enum above: this stores Better Auth's
   // own internal admin-plugin role concept (a free-text string it manages),
@@ -151,6 +157,7 @@ model Organization {
   quotations    Quotation[]
   followUps     FollowUp[]
   tasks         Task[]
+  auditLogs     AuditLog[]
 
   @@map("organization")
 }
@@ -644,6 +651,78 @@ model Task {
   @@index([organizationId, dueDate])
   @@index([assignedToId])
   @@map("task")
+}
+
+// Immutable record of a CREATE/UPDATE/STATUS_CHANGE on one of the CRM's
+// mutable modules (Client, Enquiry, Quotation, FollowUp, Task, Product,
+// ProductGroup, User, Organization). Rows are written exclusively by the
+// Prisma Client Extension in backend/src/audit-logs/audit.extension.ts —
+// there are no explicit audit calls in any of those modules' own services,
+// and this table has no application-level UPDATE/DELETE (GET-only API, see
+// AuditLogsController).
+//
+// entityType is a validated string, not a Prisma enum (see AUDITED_MODELS in
+// audit-logs/entity-config.ts) — new audited modules extend that config
+// without a migration. entityId is likewise an unconstrained string, not a
+// polymorphic foreign key: Postgres cannot express "references whichever
+// table entityType names."
+model AuditLog {
+  id String @id @default(cuid())
+
+  // Cascade, unlike every other organizationId FK in this schema (which use
+  // Restrict to stop a business record from silently disappearing) — an
+  // audit trail is generated bookkeeping about an organization, not primary
+  // data of its own, so it has nothing to protect once the organization
+  // itself is gone. Restrict here would also make an organization
+  // undeletable the moment it exists, since creating it produces its own
+  // ORGANIZATION CREATE audit row.
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  // Nullable + SetNull: an audit record must outlive the user who caused it.
+  // actorName/actorEmail are captured at write time and never updated
+  // afterward, so the log stays readable ("Jane Doe (jane@x.com)") even
+  // after the user is renamed or deleted — a live join would lose that.
+  actorId    String?
+  actor      User?   @relation("AuditLogActor", fields: [actorId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  actorName  String?
+  actorEmail String?
+
+  action      AuditAction
+  entityType  String
+  entityId    String
+  // Human-readable label of the affected row at write time (e.g. a Client's
+  // companyName, a Quotation's quotationNumber) — same "snapshot, not live
+  // join" reasoning as actorName/actorEmail.
+  entityLabel String?
+
+  // Whitelisted-field-only snapshots (see AUDITED_MODELS) — never the full
+  // row, and never password/hash/session/access/refresh/ID/verification
+  // token fields, which live on models this table never audits at all
+  // (Account/Session/Verification are outside AUDITED_MODELS). `before` is
+  // null for CREATE.
+  before Json?
+  after  Json?
+
+  // Optional small structured extras only — never a dumping ground for the
+  // whole record (that's what before/after are for).
+  metadata Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([organizationId, createdAt])
+  @@index([organizationId, entityType, entityId])
+  @@index([actorId])
+  @@map("audit_log")
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  STATUS_CHANGE
+  // No current call sites/endpoint delete anything in an audited module —
+  // kept for future-proofing only (see decision log for Phase 16).
+  DELETE
 }
 
 enum FollowUpType {
