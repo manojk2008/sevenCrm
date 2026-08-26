@@ -213,20 +213,25 @@ export class SalesService {
   async getSummary(currentUser: CurrentUser, query: SalesPeriodQueryDto): Promise<SafeSalesSummary> {
     this.assertCanRead(currentUser);
     const { organizationId } = currentUser;
+    const isSalesExec = currentUser.crmRole === UserRole.SALES_EXECUTIVE;
     const createdAt = this.createdAtFilter(query.from, query.to);
+    // Sales Executive revenue rule (Phase 19): revenue is scoped to clients
+    // CURRENTLY assigned to the caller, never quotation.assignedToId /
+    // enquiry.assignedToId. Additive to organizationId, never a replacement.
+    const clientOwnershipFilter = isSalesExec ? { client: { assignedToId: currentUser.id } } : {};
 
     // Two grouped queries for the entire summary — no per-status or
     // per-stage round trip, and no N+1.
     const [quotationGroups, enquiryGroups] = await Promise.all([
       prisma.quotation.groupBy({
         by: ['status'],
-        where: { organizationId, ...(createdAt ? { createdAt } : {}) },
+        where: { organizationId, ...clientOwnershipFilter, ...(createdAt ? { createdAt } : {}) },
         _count: { _all: true },
         _sum: { subtotal: true, discountAmount: true, grandTotal: true },
       }),
       prisma.enquiry.groupBy({
         by: ['stage'],
-        where: { organizationId, ...(createdAt ? { createdAt } : {}) },
+        where: { organizationId, ...clientOwnershipFilter, ...(createdAt ? { createdAt } : {}) },
         _count: { _all: true },
         _sum: { expectedRevenue: true },
       }),
@@ -317,6 +322,7 @@ export class SalesService {
   ): Promise<SafeRevenueByPeriod> {
     this.assertCanRead(currentUser);
     const { organizationId } = currentUser;
+    const isSalesExec = currentUser.crmRole === UserRole.SALES_EXECUTIVE;
 
     // Raw SQL because Prisma's groupBy cannot bucket a timestamp by month;
     // parameterized through tagged-template interpolation exactly like
@@ -324,22 +330,30 @@ export class SalesService {
     // TIMESTAMP(3) column, which Prisma stores in UTC — so buckets are UTC
     // calendar months.
     const fromClause = query.from
-      ? Prisma.sql`AND "createdAt" >= ${new Date(query.from)}`
+      ? Prisma.sql`AND q."createdAt" >= ${new Date(query.from)}`
       : Prisma.empty;
     const toClause = query.to
-      ? Prisma.sql`AND "createdAt" <= ${new Date(query.to)}`
+      ? Prisma.sql`AND q."createdAt" <= ${new Date(query.to)}`
+      : Prisma.empty;
+    // Sales Executive revenue rule (Phase 19): scoped to clients CURRENTLY
+    // assigned to the caller, never quotation.assignedToId. Additive to the
+    // existing organizationId/status filters, never a replacement.
+    const ownershipClause = isSalesExec
+      ? Prisma.sql`AND c."assignedToId" = ${currentUser.id}`
       : Prisma.empty;
 
     const rows = await prisma.$queryRaw<RevenuePeriodRow[]>`
-      SELECT date_trunc('month', "createdAt") AS "periodStart",
-             SUM("subtotal" - "discountAmount") AS "net",
-             SUM("grandTotal")                  AS "gross",
-             COUNT(*)                           AS "quotationCount"
-      FROM "quotation"
-      WHERE "organizationId" = ${organizationId}
-        AND "status" = ${QuotationStatus.ACCEPTED}::"QuotationStatus"
+      SELECT date_trunc('month', q."createdAt") AS "periodStart",
+             SUM(q."subtotal" - q."discountAmount") AS "net",
+             SUM(q."grandTotal")                    AS "gross",
+             COUNT(*)                               AS "quotationCount"
+      FROM "quotation" q
+      INNER JOIN "client" c ON c."id" = q."clientId"
+      WHERE q."organizationId" = ${organizationId}
+        AND q."status" = ${QuotationStatus.ACCEPTED}::"QuotationStatus"
         ${fromClause}
         ${toClause}
+        ${ownershipClause}
       GROUP BY 1
       ORDER BY 1 ASC
     `;
@@ -365,7 +379,7 @@ export class SalesService {
 
     const groups = await prisma.quotation.groupBy({
       by: ['clientId'],
-      where: this.acceptedQuotationWhere(organizationId, query),
+      where: this.acceptedQuotationWhere(currentUser, query),
       _count: { _all: true },
       _sum: { subtotal: true, discountAmount: true, grandTotal: true },
     });
@@ -404,10 +418,43 @@ export class SalesService {
   ): Promise<SafeRevenueByRepresentative[]> {
     this.assertCanRead(currentUser);
     const { organizationId } = currentUser;
+    const isSalesExec = currentUser.crmRole === UserRole.SALES_EXECUTIVE;
+
+    // Sales Executive revenue rule (Phase 19), representative-breakdown
+    // decision: a Sales Executive must never see another representative's
+    // name/id/revenue — even scoping the WHERE by client ownership isn't
+    // enough on its own, because a colleague could be quotation.assignedToId
+    // on the caller's own client's quotation, and grouping by that column
+    // would still surface the colleague's identity. So for a Sales
+    // Executive this endpoint does NOT group by quotation.assignedToId at
+    // all: it returns exactly one synthetic row representing the caller,
+    // aggregating every accepted quotation belonging to their own clients
+    // regardless of which rep the quotation itself is assigned to. This
+    // remains a real endpoint (never 403) — only its shape narrows to one
+    // row. ADMIN/SUPER_ADMIN keep the full multi-representative breakdown,
+    // unchanged.
+    if (isSalesExec) {
+      const where = this.acceptedQuotationWhere(currentUser, query);
+      const aggregate = await prisma.quotation.aggregate({
+        where,
+        _count: { _all: true },
+        _sum: { subtotal: true, discountAmount: true, grandTotal: true },
+      });
+      return [
+        {
+          userId: currentUser.id,
+          name: currentUser.name,
+          email: currentUser.email,
+          netAcceptedRevenue: this.netOf(aggregate._sum),
+          grossAcceptedValue: this.decimalToNumber(aggregate._sum.grandTotal),
+          acceptedQuotationCount: aggregate._count._all,
+        },
+      ];
+    }
 
     const groups = await prisma.quotation.groupBy({
       by: ['assignedToId'],
-      where: this.acceptedQuotationWhere(organizationId, query),
+      where: this.acceptedQuotationWhere(currentUser, query),
       _count: { _all: true },
       _sum: { subtotal: true, discountAmount: true, grandTotal: true },
     });
@@ -453,6 +500,7 @@ export class SalesService {
   ): Promise<SafeRevenueByProduct[]> {
     this.assertCanRead(currentUser);
     const { organizationId } = currentUser;
+    const isSalesExec = currentUser.crmRole === UserRole.SALES_EXECUTIVE;
     const limit = query.limit ?? DEFAULT_BREAKDOWN_LIMIT;
 
     // Raw SQL rather than groupBy because the net-of-tax figure has to be
@@ -476,6 +524,12 @@ export class SalesService {
     const toClause = query.to
       ? Prisma.sql`AND q."createdAt" <= ${new Date(query.to)}`
       : Prisma.empty;
+    // Sales Executive revenue rule (Phase 19): scoped to clients CURRENTLY
+    // assigned to the caller, never quotation.assignedToId. Additive to the
+    // existing organizationId/status filters, never a replacement.
+    const ownershipClause = isSalesExec
+      ? Prisma.sql`AND c."assignedToId" = ${currentUser.id}`
+      : Prisma.empty;
 
     const rows = await prisma.$queryRaw<RevenueProductRow[]>`
       SELECT li."productId" AS "productId",
@@ -486,10 +540,12 @@ export class SalesService {
              COUNT(*)                                   AS "lineItemCount"
       FROM "quotation_line_item" li
       INNER JOIN "quotation" q ON q."id" = li."quotationId"
+      INNER JOIN "client" c ON c."id" = q."clientId"
       WHERE q."organizationId" = ${organizationId}
         AND q."status" = ${QuotationStatus.ACCEPTED}::"QuotationStatus"
         ${fromClause}
         ${toClause}
+        ${ownershipClause}
       GROUP BY li."productId"
       ORDER BY 2 DESC
       LIMIT ${limit}
@@ -526,6 +582,7 @@ export class SalesService {
   ): Promise<PaginatedLostEnquiries> {
     this.assertCanRead(currentUser);
     const { organizationId } = currentUser;
+    const isSalesExec = currentUser.crmRole === UserRole.SALES_EXECUTIVE;
 
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 25;
@@ -534,6 +591,10 @@ export class SalesService {
     const where: Prisma.EnquiryWhereInput = {
       organizationId,
       stage: EnquiryStage.LOST,
+      // Sales Executive revenue rule (Phase 19): lost enquiries are scoped
+      // to clients CURRENTLY assigned to the caller. Additive to
+      // organizationId/stage above, never a replacement of it.
+      ...(isSalesExec ? { client: { assignedToId: currentUser.id } } : {}),
       ...(createdAt ? { createdAt } : {}),
     };
 
@@ -586,6 +647,13 @@ export class SalesService {
   // controller for a manage-tier check to guard. Mirrors
   // FollowUpsService.assertCanRead.
   //
+  // Phase 19: for a Sales Executive, every figure is additionally scoped to
+  // accepted quotations belonging to clients CURRENTLY assigned to them —
+  // never quotation.assignedToId. getRevenueByRepresentative is a further
+  // special case: it collapses to a single self-row rather than a
+  // per-assignee breakdown, so a colleague's identity/revenue can never
+  // surface even indirectly (see that method's own comment).
+  //
   // SALES_MANAGER is deliberately not referenced: it is not a value of
   // UserRole. src/constants/roles.ts on the frontend still describes one but
   // is dead configuration and is not an authority here.
@@ -611,15 +679,22 @@ export class SalesService {
    * authenticated session — it is never accepted from query or body (the
    * DTOs do not declare it, and the global forbidNonWhitelisted pipe would
    * reject it outright).
+   *
+   * Sales Executive revenue rule (Phase 19): when the caller is a Sales
+   * Executive, additionally scoped to clients CURRENTLY assigned to them —
+   * never quotation.assignedToId. Additive to organizationId/status above,
+   * never a replacement of it.
    */
   private acceptedQuotationWhere(
-    organizationId: string,
+    currentUser: CurrentUser,
     query: SalesPeriodQueryDto,
   ): Prisma.QuotationWhereInput {
     const createdAt = this.createdAtFilter(query.from, query.to);
+    const isSalesExec = currentUser.crmRole === UserRole.SALES_EXECUTIVE;
     return {
-      organizationId,
+      organizationId: currentUser.organizationId,
       status: QuotationStatus.ACCEPTED,
+      ...(isSalesExec ? { client: { assignedToId: currentUser.id } } : {}),
       ...(createdAt ? { createdAt } : {}),
     };
   }

@@ -93,11 +93,13 @@ describe('FollowUpsController (e2e)', () => {
   let superAdmin: { id: string; email: string };
   let adminUser: { id: string; email: string };
   let salesUser: { id: string; email: string };
+  let salesUserB: { id: string; email: string };
   let otherOrgAdmin: { id: string; email: string };
 
   let clientA: { id: string; companyName: string };
   let clientA2: { id: string; companyName: string };
   let clientB: { id: string; companyName: string };
+  let clientOwnedBySales: { id: string; companyName: string };
   let enquiryA: { id: string; clientId: string; title: string };
   let enquiryA2: { id: string; clientId: string };
   let enquiryB: { id: string };
@@ -189,6 +191,13 @@ describe('FollowUpsController (e2e)', () => {
       role: 'SALES_EXECUTIVE',
       department: 'Sales',
     });
+    salesUserB = await createFixtureUser({
+      email: `followup-sales-b-${runId}@test.local`,
+      name: 'FollowUp Sales Executive B',
+      organizationId: orgA.id,
+      role: 'SALES_EXECUTIVE',
+      department: 'Sales',
+    });
     otherOrgAdmin = await createFixtureUser({
       email: `followup-other-admin-${runId}@test.local`,
       name: 'FollowUp Other Org Admin',
@@ -200,6 +209,7 @@ describe('FollowUpsController (e2e)', () => {
     clientA = await createFixtureClient(orgA.id);
     clientA2 = await createFixtureClient(orgA.id);
     clientB = await createFixtureClient(orgB.id);
+    clientOwnedBySales = await createFixtureClient(orgA.id, { assignedToId: salesUser.id });
 
     enquiryA = await createFixtureEnquiry(orgA.id, clientA.id);
     enquiryA2 = await createFixtureEnquiry(orgA.id, clientA2.id);
@@ -286,10 +296,13 @@ describe('FollowUpsController (e2e)', () => {
 
   it('5. allows a Sales Executive full access — unlike Quotations, writes are not admin-only here', async () => {
     const cookies = await signIn(salesUser.email);
+    // Phase 19: a Sales Executive can only create against a client assigned
+    // to themselves — basePayload()'s default clientId (clientA) is
+    // unassigned, so clientOwnedBySales is used here instead.
     const created = await request(app.getHttpServer())
       .post('/follow-ups')
       .set('Cookie', cookies)
-      .send(basePayload())
+      .send(basePayload({ clientId: clientOwnedBySales.id }))
       .expect(201);
     expect(created.body.organizationId).toBe(orgA.id);
 
@@ -1135,5 +1148,126 @@ describe('FollowUpsController (e2e)', () => {
     expect(Object.keys(res.body.assignedTo).sort()).toEqual(['email', 'id', 'name']);
     expect(Object.keys(res.body.client).sort()).toEqual(['companyName', 'id']);
     expect(Object.keys(res.body.enquiry).sort()).toEqual(['id', 'title']);
+  });
+
+  // -------------------------------------------------------------------
+  // Phase 19 — Sales Executive client ownership
+  // -------------------------------------------------------------------
+
+  it('43. Sales Executive list shows only follow-ups whose client they own', async () => {
+    const adminCookies = await signIn(adminUser.email);
+    const salesCookies = await signIn(salesUser.email);
+    const otherRepClient = await createFixtureClient(orgA.id, { assignedToId: salesUserB.id });
+    const unassignedClient = await createFixtureClient(orgA.id);
+
+    const ownFollowUp = await request(app.getHttpServer())
+      .post('/follow-ups')
+      .set('Cookie', salesCookies)
+      .send(basePayload({ clientId: clientOwnedBySales.id }))
+      .expect(201);
+    const otherRepFollowUp = await request(app.getHttpServer())
+      .post('/follow-ups')
+      .set('Cookie', adminCookies)
+      .send(basePayload({ clientId: otherRepClient.id }))
+      .expect(201);
+    const unassignedFollowUp = await request(app.getHttpServer())
+      .post('/follow-ups')
+      .set('Cookie', adminCookies)
+      .send(basePayload({ clientId: unassignedClient.id }))
+      .expect(201);
+
+    const listRes = await request(app.getHttpServer())
+      .get('/follow-ups?pageSize=100')
+      .set('Cookie', salesCookies)
+      .expect(200);
+    const ids: string[] = listRes.body.data.map((f: { id: string }) => f.id);
+    expect(ids).toContain(ownFollowUp.body.id);
+    expect(ids).not.toContain(otherRepFollowUp.body.id);
+    expect(ids).not.toContain(unassignedFollowUp.body.id);
+  });
+
+  it('44. Sales Executive detail 404s on another-client and unassigned-client follow-ups', async () => {
+    const adminCookies = await signIn(adminUser.email);
+    const salesCookies = await signIn(salesUser.email);
+    const otherRepClient = await createFixtureClient(orgA.id, { assignedToId: salesUserB.id });
+    const unassignedClient = await createFixtureClient(orgA.id);
+
+    const otherRepFollowUp = await request(app.getHttpServer())
+      .post('/follow-ups')
+      .set('Cookie', adminCookies)
+      .send(basePayload({ clientId: otherRepClient.id }))
+      .expect(201);
+    const unassignedFollowUp = await request(app.getHttpServer())
+      .post('/follow-ups')
+      .set('Cookie', adminCookies)
+      .send(basePayload({ clientId: unassignedClient.id }))
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .get(`/follow-ups/${otherRepFollowUp.body.id}`)
+      .set('Cookie', salesCookies)
+      .expect(404);
+    await request(app.getHttpServer())
+      .get(`/follow-ups/${unassignedFollowUp.body.id}`)
+      .set('Cookie', salesCookies)
+      .expect(404);
+  });
+
+  it('45. Sales Executive create against another user client is rejected (400)', async () => {
+    const salesCookies = await signIn(salesUser.email);
+    const otherRepClient = await createFixtureClient(orgA.id, { assignedToId: salesUserB.id });
+    const unassignedClient = await createFixtureClient(orgA.id);
+
+    await request(app.getHttpServer())
+      .post('/follow-ups')
+      .set('Cookie', salesCookies)
+      .send(basePayload({ clientId: otherRepClient.id }))
+      .expect(400);
+    await request(app.getHttpServer())
+      .post('/follow-ups')
+      .set('Cookie', salesCookies)
+      .send(basePayload({ clientId: unassignedClient.id }))
+      .expect(400);
+  });
+
+  it('46. Sales Executive create against own client works, and FollowUp.assignedToId remains freely settable', async () => {
+    const salesCookies = await signIn(salesUser.email);
+    const created = await request(app.getHttpServer())
+      .post('/follow-ups')
+      .set('Cookie', salesCookies)
+      .send(basePayload({ clientId: clientOwnedBySales.id, assignedToId: salesUserB.id }))
+      .expect(201);
+    expect(created.body.assignedTo.id).toBe(salesUserB.id);
+
+    // Still visible to the owning Sales Executive despite assignedToId
+    // pointing at a colleague — client ownership is authoritative.
+    await request(app.getHttpServer())
+      .get(`/follow-ups/${created.body.id}`)
+      .set('Cookie', salesCookies)
+      .expect(200);
+  });
+
+  it('47. Admin and Super Admin retain organization-wide follow-up visibility', async () => {
+    const salesCookies = await signIn(salesUser.email);
+    const adminCookies = await signIn(adminUser.email);
+    const superCookies = await signIn(superAdmin.email);
+
+    const ownFollowUp = await request(app.getHttpServer())
+      .post('/follow-ups')
+      .set('Cookie', salesCookies)
+      .send(basePayload({ clientId: clientOwnedBySales.id }))
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .get(`/follow-ups/${ownFollowUp.body.id}`)
+      .set('Cookie', adminCookies)
+      .expect(200);
+
+    const listRes = await request(app.getHttpServer())
+      .get('/follow-ups?pageSize=100')
+      .set('Cookie', superCookies)
+      .expect(200);
+    const ids: string[] = listRes.body.data.map((f: { id: string }) => f.id);
+    expect(ids).toContain(ownFollowUp.body.id);
   });
 });

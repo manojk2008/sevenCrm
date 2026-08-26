@@ -1,5 +1,6 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
 import { prisma } from '../auth/auth';
+import type { Prisma } from '../../generated/prisma/client';
 import { UserRole } from '../../generated/prisma/enums';
 import type { AppSession } from '../auth/session.types';
 import { SearchQueryDto } from './dto/search-query.dto';
@@ -48,26 +49,40 @@ export class SearchService {
   // either, and adding a fifth parallel query for another list-only result
   // would expand scope without adding a reachable destination Search
   // doesn't already offer via Enquiries (Phase 10 decision).
+  //
+  // Phase 19: for a Sales Executive, Client/Enquiry/Quotation results are
+  // scoped to their own clients (directly on Client, via the client
+  // relation on Enquiry/Quotation) — Products remain organization-wide.
 
   async search(currentUser: CurrentUser, query: SearchQueryDto): Promise<SafeSearchResponse> {
     this.assertCanRead(currentUser);
     const { organizationId } = currentUser;
+    const isSalesExec = currentUser.crmRole === UserRole.SALES_EXECUTIVE;
     const q = query.q;
+    // Sales Executive ownership rule (Phase 19): additive to organizationId
+    // for Clients/Enquiries/Quotations — Products stay organization-wide.
+    const clientFilter = isSalesExec ? { assignedToId: currentUser.id } : {};
+    const relatedClientFilter = isSalesExec ? { client: { assignedToId: currentUser.id } } : {};
 
     const [clients, enquiries, products, quotations] = await Promise.all([
-      this.searchClients(organizationId, q),
-      this.searchEnquiries(organizationId, q),
+      this.searchClients(organizationId, q, clientFilter),
+      this.searchEnquiries(organizationId, q, relatedClientFilter),
       this.searchProducts(organizationId, q),
-      this.searchQuotations(organizationId, q),
+      this.searchQuotations(organizationId, q, relatedClientFilter),
     ]);
 
     return { query: q, results: [...clients, ...enquiries, ...products, ...quotations] };
   }
 
-  private async searchClients(organizationId: string, q: string): Promise<SafeSearchResult[]> {
+  private async searchClients(
+    organizationId: string,
+    q: string,
+    ownershipFilter: Prisma.ClientWhereInput,
+  ): Promise<SafeSearchResult[]> {
     const rows = await prisma.client.findMany({
       where: {
         organizationId,
+        ...ownershipFilter,
         OR: [
           { companyName: { contains: q, mode: 'insensitive' } },
           { email: { contains: q, mode: 'insensitive' } },
@@ -87,10 +102,15 @@ export class SearchService {
     }));
   }
 
-  private async searchEnquiries(organizationId: string, q: string): Promise<SafeSearchResult[]> {
+  private async searchEnquiries(
+    organizationId: string,
+    q: string,
+    ownershipFilter: Prisma.EnquiryWhereInput,
+  ): Promise<SafeSearchResult[]> {
     const rows = await prisma.enquiry.findMany({
       where: {
         organizationId,
+        ...ownershipFilter,
         OR: [
           { title: { contains: q, mode: 'insensitive' } },
           { client: { companyName: { contains: q, mode: 'insensitive' } } },
@@ -145,10 +165,15 @@ export class SearchService {
     }));
   }
 
-  private async searchQuotations(organizationId: string, q: string): Promise<SafeSearchResult[]> {
+  private async searchQuotations(
+    organizationId: string,
+    q: string,
+    ownershipFilter: Prisma.QuotationWhereInput,
+  ): Promise<SafeSearchResult[]> {
     const rows = await prisma.quotation.findMany({
       where: {
         organizationId,
+        ...ownershipFilter,
         OR: [
           { quotationNumber: { contains: q, mode: 'insensitive' } },
           { client: { companyName: { contains: q, mode: 'insensitive' } } },

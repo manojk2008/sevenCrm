@@ -133,11 +133,25 @@ export class DashboardService {
   async getSummary(currentUser: CurrentUser): Promise<SafeDashboardSummary> {
     this.assertCanRead(currentUser);
     const { organizationId } = currentUser;
+    const isSalesExec = currentUser.crmRole === UserRole.SALES_EXECUTIVE;
 
+    // Sales Executive ownership rule (Phase 19): totalClients/openEnquiries
+    // are scoped to the caller's own clients — consistent with Clients and
+    // Enquiries being self-scoped everywhere else. totalProducts stays
+    // organization-wide: Products are explicitly excluded from ownership
+    // filtering.
     const [totalClients, totalProducts, openEnquiries] = await Promise.all([
-      prisma.client.count({ where: { organizationId } }),
+      prisma.client.count({
+        where: { organizationId, ...(isSalesExec ? { assignedToId: currentUser.id } : {}) },
+      }),
       prisma.product.count({ where: { organizationId } }),
-      prisma.enquiry.count({ where: { organizationId, stage: { in: OPEN_ENQUIRY_STAGES } } }),
+      prisma.enquiry.count({
+        where: {
+          organizationId,
+          stage: { in: OPEN_ENQUIRY_STAGES },
+          ...(isSalesExec ? { client: { assignedToId: currentUser.id } } : {}),
+        },
+      }),
     ]);
 
     return { totalClients, totalProducts, openEnquiries };
@@ -149,11 +163,18 @@ export class DashboardService {
   ): Promise<SafeDashboardLeadSources> {
     this.assertCanRead(currentUser);
     const { organizationId } = currentUser;
+    const isSalesExec = currentUser.crmRole === UserRole.SALES_EXECUTIVE;
     const createdAt = this.createdAtFilter(query.from, query.to);
 
     const groups = await prisma.enquiry.groupBy({
       by: ['source'],
-      where: { organizationId, ...(createdAt ? { createdAt } : {}) },
+      where: {
+        organizationId,
+        // Sales Executive ownership rule (Phase 19): scoped to enquiries
+        // belonging to the caller's own clients.
+        ...(isSalesExec ? { client: { assignedToId: currentUser.id } } : {}),
+        ...(createdAt ? { createdAt } : {}),
+      },
       _count: { _all: true },
     });
 
@@ -181,23 +202,31 @@ export class DashboardService {
   ): Promise<SafeRecentActivity> {
     this.assertCanRead(currentUser);
     const { organizationId } = currentUser;
+    const isSalesExec = currentUser.crmRole === UserRole.SALES_EXECUTIVE;
     const limit = query.limit ?? DEFAULT_ACTIVITY_LIMIT;
+    // Sales Executive ownership rule (Phase 19): every activity source is
+    // scoped to the caller's own clients — CLIENT_CREATED directly via
+    // Client.assignedToId, the other three via the client relation. This is
+    // also what makes NotificationsService correct for free, since it
+    // consumes this method verbatim.
+    const clientFilter = isSalesExec ? { assignedToId: currentUser.id } : {};
+    const relatedClientFilter = isSalesExec ? { client: { assignedToId: currentUser.id } } : {};
 
     const [clients, enquiries, quotations, completedFollowUps] = await Promise.all([
       prisma.client.findMany({
-        where: { organizationId },
+        where: { organizationId, ...clientFilter },
         select: { id: true, companyName: true, createdAt: true },
         orderBy: { createdAt: 'desc' },
         take: ACTIVITY_FETCH_PER_SOURCE,
       }),
       prisma.enquiry.findMany({
-        where: { organizationId },
+        where: { organizationId, ...relatedClientFilter },
         select: { id: true, title: true, createdAt: true, client: { select: { companyName: true } } },
         orderBy: { createdAt: 'desc' },
         take: ACTIVITY_FETCH_PER_SOURCE,
       }),
       prisma.quotation.findMany({
-        where: { organizationId },
+        where: { organizationId, ...relatedClientFilter },
         select: {
           id: true,
           quotationNumber: true,
@@ -212,7 +241,7 @@ export class DashboardService {
       // fabricated. Rows still pending completion have completedAt = null
       // and are excluded by this filter.
       prisma.followUp.findMany({
-        where: { organizationId, completedAt: { not: null } },
+        where: { organizationId, completedAt: { not: null }, ...relatedClientFilter },
         select: {
           id: true,
           subject: true,
@@ -274,7 +303,6 @@ export class DashboardService {
 
   async getMonthlyComparison(currentUser: CurrentUser): Promise<SafeMonthlyComparison> {
     this.assertCanRead(currentUser);
-    const { organizationId } = currentUser;
 
     // UTC calendar months, matching SalesService.getRevenueByPeriod's
     // date_trunc('month', ...) bucketing.
@@ -287,24 +315,33 @@ export class DashboardService {
     const previousEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0, -1));
 
     const [current, previous] = await Promise.all([
-      this.periodCounts(organizationId, currentStart, currentEnd),
-      this.periodCounts(organizationId, previousStart, previousEnd),
+      this.periodCounts(currentUser, currentStart, currentEnd),
+      this.periodCounts(currentUser, previousStart, previousEnd),
     ]);
 
     return { current, previous };
   }
 
   private async periodCounts(
-    organizationId: string,
+    currentUser: CurrentUser,
     from: Date,
     to: Date,
   ): Promise<SafePeriodCounts> {
+    const { organizationId } = currentUser;
+    const isSalesExec = currentUser.crmRole === UserRole.SALES_EXECUTIVE;
+    // Sales Executive ownership rule (Phase 19): every count is scoped to
+    // the caller's own clients, via the client relation.
+    const relatedClientFilter = isSalesExec ? { client: { assignedToId: currentUser.id } } : {};
     const createdAt = { gte: from, lte: to };
     const [leads, meetings, quotes, wins] = await Promise.all([
-      prisma.enquiry.count({ where: { organizationId, createdAt } }),
-      prisma.followUp.count({ where: { organizationId, type: FollowUpType.MEETING, createdAt } }),
-      prisma.quotation.count({ where: { organizationId, createdAt } }),
-      prisma.enquiry.count({ where: { organizationId, stage: EnquiryStage.WON, createdAt } }),
+      prisma.enquiry.count({ where: { organizationId, createdAt, ...relatedClientFilter } }),
+      prisma.followUp.count({
+        where: { organizationId, type: FollowUpType.MEETING, createdAt, ...relatedClientFilter },
+      }),
+      prisma.quotation.count({ where: { organizationId, createdAt, ...relatedClientFilter } }),
+      prisma.enquiry.count({
+        where: { organizationId, stage: EnquiryStage.WON, createdAt, ...relatedClientFilter },
+      }),
     ]);
     return { from, to, leads, meetings, quotes, wins };
   }
@@ -313,6 +350,12 @@ export class DashboardService {
   // Authorization — same three readable roles as every completed module
   // (Clients/Enquiries/Products/Quotations/Follow-ups/Sales). Dashboard has
   // no write routes for a manage-tier check to guard.
+  //
+  // Phase 19: for a Sales Executive, every widget except totalProducts is
+  // scoped to their own clients (directly on Client, or via the client
+  // relation on Enquiry/Quotation/FollowUp) — never the record's own
+  // assignedToId. totalProducts stays organization-wide; Products are
+  // explicitly excluded from ownership filtering.
   // ---------------------------------------------------------------------
 
   private assertCanRead(currentUser: CurrentUser): void {

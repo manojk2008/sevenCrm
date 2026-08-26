@@ -110,7 +110,7 @@ export class EnquiriesService {
   async create(dto: CreateEnquiryDto, currentUser: CurrentUser): Promise<SafeEnquiry> {
     this.assertCanCreate(currentUser);
 
-    await this.assertClientInOrg(dto.clientId, currentUser.organizationId);
+    await this.assertClientInOrg(dto.clientId, currentUser);
     if (dto.assignedToId) {
       await this.assertAssignedUserInOrg(dto.assignedToId, currentUser.organizationId);
     }
@@ -168,12 +168,18 @@ export class EnquiriesService {
     query: ListEnquiriesQueryDto,
   ): Promise<PaginatedEnquiries> {
     this.assertCanRead(currentUser);
+    const isSalesExec = currentUser.crmRole === UserRole.SALES_EXECUTIVE;
 
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 25;
 
     const where: Prisma.EnquiryWhereInput = {
       organizationId: currentUser.organizationId,
+      // Sales Executive ownership rule (Phase 19): client ownership is
+      // authoritative — Enquiry.assignedToId is deliberately NOT used as
+      // the visibility boundary. Additive to organizationId above, never a
+      // replacement of it.
+      ...(isSalesExec ? { client: { assignedToId: currentUser.id } } : {}),
       ...(query.stage ? { stage: query.stage } : {}),
       ...(query.priority ? { priority: query.priority } : {}),
       ...(query.assignedToId ? { assignedToId: query.assignedToId } : {}),
@@ -211,13 +217,13 @@ export class EnquiriesService {
 
   async findOneForOrg(id: string, currentUser: CurrentUser): Promise<SafeEnquiry> {
     this.assertCanRead(currentUser);
-    const enquiry = await this.getOrgEnquiryOrThrow(id, currentUser.organizationId);
+    const enquiry = await this.getOrgEnquiryOrThrow(id, currentUser);
     return this.toSafeEnquiry(enquiry);
   }
 
   async update(id: string, dto: UpdateEnquiryDto, currentUser: CurrentUser): Promise<SafeEnquiry> {
     this.assertCanUpdate(currentUser);
-    const existing = await this.getOrgEnquiryOrThrow(id, currentUser.organizationId);
+    const existing = await this.getOrgEnquiryOrThrow(id, currentUser);
 
     if (dto.assignedToId !== undefined && dto.assignedToId !== null) {
       await this.assertAssignedUserInOrg(dto.assignedToId, currentUser.organizationId);
@@ -290,7 +296,7 @@ export class EnquiriesService {
     currentUser: CurrentUser,
   ): Promise<SafeEnquiry> {
     this.assertCanUpdate(currentUser);
-    const existing = await this.getOrgEnquiryOrThrow(id, currentUser.organizationId);
+    const existing = await this.getOrgEnquiryOrThrow(id, currentUser);
 
     const data: Prisma.EnquiryUpdateInput = { stage: dto.stage };
     if (dto.stage === EnquiryStage.LOST) {
@@ -316,10 +322,13 @@ export class EnquiriesService {
   // ---------------------------------------------------------------------
   // Authorization
   //
-  // Mirrors ClientsService exactly. All three roles get organization-wide
-  // read/create/update on enquiries — there is no ownership- or
-  // assignment-based access model anywhere in this codebase, and inventing
-  // one here would be a new, undocumented permission concept.
+  // All three roles get read/create/update on enquiries, but (Phase 19) a
+  // Sales Executive is additionally scoped to enquiries whose CLIENT is
+  // assigned to them: findAllForOrg/getOrgEnquiryOrThrow filter via the
+  // client relation, and create() validates dto.clientId the same way.
+  // Enquiry.assignedToId is deliberately NOT the visibility boundary and
+  // remains freely settable to any org user, exactly as before — client
+  // ownership alone governs what a Sales Executive can see.
   //
   // Unlike Clients there is no narrower admin-only tier: Clients restricts
   // status changes and contact management to SUPER_ADMIN/ADMIN because
@@ -366,13 +375,27 @@ export class EnquiriesService {
     }
   }
 
-  private async assertClientInOrg(clientId: string, organizationId: string): Promise<void> {
+  private async assertClientInOrg(clientId: string, currentUser: CurrentUser): Promise<void> {
     // Scoped by organizationId so a client in another org is indistinguishable
     // from one that does not exist — same non-leaking behaviour as the
-    // enquiry lookup itself.
-    const client = await prisma.client.findFirst({ where: { id: clientId, organizationId } });
+    // enquiry lookup itself. Sales Executive ownership rule (Phase 19): also
+    // scoped to the caller's own clients — this is creation-time business
+    // validation on a caller-supplied clientId (a 400), not a single-record
+    // id-probing scenario (which stays a 404 in getOrgEnquiryOrThrow).
+    const isSalesExec = currentUser.crmRole === UserRole.SALES_EXECUTIVE;
+    const client = await prisma.client.findFirst({
+      where: {
+        id: clientId,
+        organizationId: currentUser.organizationId,
+        ...(isSalesExec ? { assignedToId: currentUser.id } : {}),
+      },
+    });
     if (!client) {
-      throw new BadRequestException('clientId must reference a client in your organization.');
+      throw new BadRequestException(
+        isSalesExec
+          ? 'clientId must reference a client assigned to you.'
+          : 'clientId must reference a client in your organization.',
+      );
     }
   }
 
@@ -477,13 +500,22 @@ export class EnquiriesService {
 
   private async getOrgEnquiryOrThrow(
     id: string,
-    organizationId: string,
+    currentUser: CurrentUser,
   ): Promise<EnquiryWithRelations> {
     // Never query by id alone — organizationId is part of the WHERE clause
     // so an enquiry belonging to another org behaves as NOT FOUND, not 403,
-    // and never leaks whether the id exists elsewhere.
+    // and never leaks whether the id exists elsewhere. Sales Executive
+    // ownership rule (Phase 19): the same additive condition, via the
+    // client relation — client ownership is authoritative, never
+    // Enquiry.assignedToId — so another rep's client's enquiry (or one on
+    // an unassigned client) is likewise NOT FOUND, never a 403.
+    const isSalesExec = currentUser.crmRole === UserRole.SALES_EXECUTIVE;
     const enquiry = await prisma.enquiry.findFirst({
-      where: { id, organizationId },
+      where: {
+        id,
+        organizationId: currentUser.organizationId,
+        ...(isSalesExec ? { client: { assignedToId: currentUser.id } } : {}),
+      },
       include: ENQUIRY_INCLUDE,
     });
     if (!enquiry) {

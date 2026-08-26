@@ -105,11 +105,13 @@ describe('QuotationsController (e2e)', () => {
   let superAdmin: { id: string; email: string };
   let adminUser: { id: string; email: string };
   let salesUser: { id: string; email: string };
+  let salesUserB: { id: string; email: string };
   let otherOrgAdmin: { id: string; email: string };
 
   let clientA: { id: string; companyName: string };
   let clientA2: { id: string; companyName: string };
   let clientB: { id: string; companyName: string };
+  let clientOwnedBySales: { id: string; companyName: string };
   let groupA: { id: string };
   let groupB: { id: string };
   let productA: { id: string; name: string; price: unknown };
@@ -183,6 +185,13 @@ describe('QuotationsController (e2e)', () => {
       role: 'SALES_EXECUTIVE',
       department: 'Sales',
     });
+    salesUserB = await createFixtureUser({
+      email: `quote-sales-b-${runId}@test.local`,
+      name: 'Quote Sales Executive B',
+      organizationId: orgA.id,
+      role: 'SALES_EXECUTIVE',
+      department: 'Sales',
+    });
     otherOrgAdmin = await createFixtureUser({
       email: `quote-other-admin-${runId}@test.local`,
       name: 'Quote Other Org Admin',
@@ -194,6 +203,7 @@ describe('QuotationsController (e2e)', () => {
     clientA = await createFixtureClient(orgA.id);
     clientA2 = await createFixtureClient(orgA.id);
     clientB = await createFixtureClient(orgB.id);
+    clientOwnedBySales = await createFixtureClient(orgA.id, { assignedToId: salesUser.id });
 
     groupA = await createFixtureProductGroup(orgA.id);
     groupB = await createFixtureProductGroup(orgB.id);
@@ -259,17 +269,20 @@ describe('QuotationsController (e2e)', () => {
 
   it('5. rejects a Sales Executive creating, updating, or changing status of a quotation, but allows read', async () => {
     const adminCookies = await signIn(adminUser.email);
+    // Phase 19: created against clientOwnedBySales so the read assertions
+    // below are actually authorized (client ownership is the visibility
+    // boundary) — write attempts are rejected regardless of client.
     const created = await request(app.getHttpServer())
       .post('/quotations')
       .set('Cookie', adminCookies)
-      .send(baseQuotationPayload())
+      .send(baseQuotationPayload({ clientId: clientOwnedBySales.id }))
       .expect(201);
 
     const salesCookies = await signIn(salesUser.email);
     await request(app.getHttpServer())
       .post('/quotations')
       .set('Cookie', salesCookies)
-      .send(baseQuotationPayload())
+      .send(baseQuotationPayload({ clientId: clientOwnedBySales.id }))
       .expect(403);
     await request(app.getHttpServer())
       .patch(`/quotations/${created.body.id}`)
@@ -1051,5 +1064,102 @@ describe('QuotationsController (e2e)', () => {
 
     await request(app.getHttpServer()).get('/quotations?pageSize=101').set('Cookie', cookies).expect(400);
     await request(app.getHttpServer()).get('/quotations?pageSize=100').set('Cookie', cookies).expect(200);
+  });
+
+  // -------------------------------------------------------------------
+  // Phase 19 — Sales Executive client ownership (read-only; no write
+  // access is added — see test 5 above, unchanged).
+  // -------------------------------------------------------------------
+
+  it('36. a quotation assigned to another rep is still visible when its client belongs to the caller (locked example)', async () => {
+    const adminCookies = await signIn(adminUser.email);
+    const salesCookies = await signIn(salesUser.email);
+
+    // Client A -> assigned to Sales Executive (salesUser).
+    // Quotation Q1 -> assignedToId = Sales Executive B (salesUserB).
+    // Sales Executive A MUST still see Q1 because Q1 belongs to Client A.
+    const q1 = await request(app.getHttpServer())
+      .post('/quotations')
+      .set('Cookie', adminCookies)
+      .send(baseQuotationPayload({ clientId: clientOwnedBySales.id, assignedToId: salesUserB.id }))
+      .expect(201);
+    expect(q1.body.assignedTo.id).toBe(salesUserB.id);
+
+    await request(app.getHttpServer())
+      .get(`/quotations/${q1.body.id}`)
+      .set('Cookie', salesCookies)
+      .expect(200);
+
+    const listRes = await request(app.getHttpServer())
+      .get('/quotations?pageSize=100')
+      .set('Cookie', salesCookies)
+      .expect(200);
+    const ids: string[] = listRes.body.data.map((q: { id: string }) => q.id);
+    expect(ids).toContain(q1.body.id);
+  });
+
+  it('37. Sales Executive list/detail hides quotations belonging to another client and unassigned clients', async () => {
+    const adminCookies = await signIn(adminUser.email);
+    const salesCookies = await signIn(salesUser.email);
+    const otherRepClient = await createFixtureClient(orgA.id, { assignedToId: salesUserB.id });
+    const unassignedClient = await createFixtureClient(orgA.id);
+
+    const ownQuotation = await request(app.getHttpServer())
+      .post('/quotations')
+      .set('Cookie', adminCookies)
+      .send(baseQuotationPayload({ clientId: clientOwnedBySales.id }))
+      .expect(201);
+    const otherRepQuotation = await request(app.getHttpServer())
+      .post('/quotations')
+      .set('Cookie', adminCookies)
+      .send(baseQuotationPayload({ clientId: otherRepClient.id }))
+      .expect(201);
+    const unassignedQuotation = await request(app.getHttpServer())
+      .post('/quotations')
+      .set('Cookie', adminCookies)
+      .send(baseQuotationPayload({ clientId: unassignedClient.id }))
+      .expect(201);
+
+    const listRes = await request(app.getHttpServer())
+      .get('/quotations?pageSize=100')
+      .set('Cookie', salesCookies)
+      .expect(200);
+    const ids: string[] = listRes.body.data.map((q: { id: string }) => q.id);
+    expect(ids).toContain(ownQuotation.body.id);
+    expect(ids).not.toContain(otherRepQuotation.body.id);
+    expect(ids).not.toContain(unassignedQuotation.body.id);
+
+    await request(app.getHttpServer())
+      .get(`/quotations/${otherRepQuotation.body.id}`)
+      .set('Cookie', salesCookies)
+      .expect(404);
+    await request(app.getHttpServer())
+      .get(`/quotations/${unassignedQuotation.body.id}`)
+      .set('Cookie', salesCookies)
+      .expect(404);
+  });
+
+  it('38. Admin and Super Admin retain organization-wide quotation visibility regardless of client assignment', async () => {
+    const adminCookies = await signIn(adminUser.email);
+    const superCookies = await signIn(superAdmin.email);
+    const otherRepClient = await createFixtureClient(orgA.id, { assignedToId: salesUserB.id });
+
+    const created = await request(app.getHttpServer())
+      .post('/quotations')
+      .set('Cookie', adminCookies)
+      .send(baseQuotationPayload({ clientId: otherRepClient.id }))
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .get(`/quotations/${created.body.id}`)
+      .set('Cookie', superCookies)
+      .expect(200);
+
+    const listRes = await request(app.getHttpServer())
+      .get('/quotations?pageSize=100')
+      .set('Cookie', superCookies)
+      .expect(200);
+    const ids: string[] = listRes.body.data.map((q: { id: string }) => q.id);
+    expect(ids).toContain(created.body.id);
   });
 });

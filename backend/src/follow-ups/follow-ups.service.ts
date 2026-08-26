@@ -74,7 +74,7 @@ export class FollowUpsService {
   async create(dto: CreateFollowUpDto, currentUser: CurrentUser): Promise<SafeFollowUp> {
     this.assertCanCreate(currentUser);
 
-    await this.assertClientInOrg(dto.clientId, currentUser.organizationId);
+    await this.assertClientInOrg(dto.clientId, currentUser);
     if (dto.enquiryId) {
       await this.assertEnquiryUsable(dto.enquiryId, dto.clientId, currentUser.organizationId);
     }
@@ -115,6 +115,7 @@ export class FollowUpsService {
     query: ListFollowUpsQueryDto,
   ): Promise<PaginatedFollowUps> {
     this.assertCanRead(currentUser);
+    const isSalesExec = currentUser.crmRole === UserRole.SALES_EXECUTIVE;
 
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 25;
@@ -154,6 +155,11 @@ export class FollowUpsService {
 
     const where: Prisma.FollowUpWhereInput = {
       organizationId: currentUser.organizationId,
+      // Sales Executive ownership rule (Phase 19): client ownership is
+      // authoritative — FollowUp.assignedToId is deliberately NOT used as
+      // the visibility boundary. Additive to organizationId above, never a
+      // replacement of it.
+      ...(isSalesExec ? { client: { assignedToId: currentUser.id } } : {}),
       ...(query.status ? { status: query.status } : {}),
       ...(query.priority ? { priority: query.priority } : {}),
       ...(query.type ? { type: query.type } : {}),
@@ -188,13 +194,13 @@ export class FollowUpsService {
 
   async findOneForOrg(id: string, currentUser: CurrentUser): Promise<SafeFollowUp> {
     this.assertCanRead(currentUser);
-    const followUp = await this.getOrgFollowUpOrThrow(id, currentUser.organizationId);
+    const followUp = await this.getOrgFollowUpOrThrow(id, currentUser);
     return this.toSafeFollowUp(followUp);
   }
 
   async update(id: string, dto: UpdateFollowUpDto, currentUser: CurrentUser): Promise<SafeFollowUp> {
     this.assertCanUpdate(currentUser);
-    const existing = await this.getOrgFollowUpOrThrow(id, currentUser.organizationId);
+    const existing = await this.getOrgFollowUpOrThrow(id, currentUser);
 
     // Re-validated against the follow-up's *existing* clientId: clientId is
     // not editable (see UpdateFollowUpDto), so the client can never be moved
@@ -234,7 +240,7 @@ export class FollowUpsService {
     currentUser: CurrentUser,
   ): Promise<SafeFollowUp> {
     this.assertCanUpdate(currentUser);
-    const existing = await this.getOrgFollowUpOrThrow(id, currentUser.organizationId);
+    const existing = await this.getOrgFollowUpOrThrow(id, currentUser);
 
     const data: Prisma.FollowUpUpdateInput = { status: dto.status };
 
@@ -273,11 +279,17 @@ export class FollowUpsService {
   // ---------------------------------------------------------------------
   // Authorization
   //
-  // Mirrors EnquiriesService exactly: all three roles get organization-wide
-  // read/create/update on follow-ups. Scheduling and completing a follow-up
-  // is ordinary day-to-day sales work — it is the primary interaction of
-  // this module for a Sales Executive — so there is no narrower admin-only
-  // tier here (unlike Quotations, where writes are ADMIN and above).
+  // All three roles get read/create/update on follow-ups. Scheduling and
+  // completing a follow-up is ordinary day-to-day sales work — it is the
+  // primary interaction of this module for a Sales Executive — so there is
+  // no narrower admin-only tier here (unlike Quotations, where writes are
+  // ADMIN and above).
+  //
+  // Phase 19: a Sales Executive is additionally scoped to follow-ups whose
+  // CLIENT is assigned to them (findAllForOrg/getOrgFollowUpOrThrow, via the
+  // client relation), and create() validates dto.clientId the same way.
+  // FollowUp.assignedToId is deliberately NOT the visibility boundary and
+  // remains freely settable to any org user, exactly as before.
   //
   // SALES_MANAGER is deliberately not referenced: it is not a value of
   // UserRole and introducing one would be a new, unapproved role concept.
@@ -319,13 +331,27 @@ export class FollowUpsService {
     }
   }
 
-  private async assertClientInOrg(clientId: string, organizationId: string): Promise<void> {
+  private async assertClientInOrg(clientId: string, currentUser: CurrentUser): Promise<void> {
     // Scoped by organizationId so a client in another org is indistinguishable
     // from one that does not exist — same non-leaking behaviour as the
-    // follow-up lookup itself.
-    const client = await prisma.client.findFirst({ where: { id: clientId, organizationId } });
+    // follow-up lookup itself. Sales Executive ownership rule (Phase 19):
+    // also scoped to the caller's own clients — creation-time business
+    // validation on a caller-supplied clientId (a 400), not a single-record
+    // id-probing scenario (which stays a 404 in getOrgFollowUpOrThrow).
+    const isSalesExec = currentUser.crmRole === UserRole.SALES_EXECUTIVE;
+    const client = await prisma.client.findFirst({
+      where: {
+        id: clientId,
+        organizationId: currentUser.organizationId,
+        ...(isSalesExec ? { assignedToId: currentUser.id } : {}),
+      },
+    });
     if (!client) {
-      throw new BadRequestException('clientId must reference a client in your organization.');
+      throw new BadRequestException(
+        isSalesExec
+          ? 'clientId must reference a client assigned to you.'
+          : 'clientId must reference a client in your organization.',
+      );
     }
   }
 
@@ -363,13 +389,21 @@ export class FollowUpsService {
 
   private async getOrgFollowUpOrThrow(
     id: string,
-    organizationId: string,
+    currentUser: CurrentUser,
   ): Promise<FollowUpWithRelations> {
     // Never query by id alone — organizationId is part of the WHERE clause so
     // a follow-up belonging to another org behaves as NOT FOUND, not 403, and
-    // never leaks whether the id exists elsewhere.
+    // never leaks whether the id exists elsewhere. Sales Executive ownership
+    // rule (Phase 19): the same additive condition via the client relation,
+    // never FollowUp.assignedToId — another rep's client's follow-up (or one
+    // on an unassigned client) is likewise NOT FOUND, never a 403.
+    const isSalesExec = currentUser.crmRole === UserRole.SALES_EXECUTIVE;
     const followUp = await prisma.followUp.findFirst({
-      where: { id, organizationId },
+      where: {
+        id,
+        organizationId: currentUser.organizationId,
+        ...(isSalesExec ? { client: { assignedToId: currentUser.id } } : {}),
+      },
       include: FOLLOW_UP_INCLUDE,
     });
     if (!followUp) {

@@ -501,4 +501,94 @@ describe('DashboardController (e2e)', () => {
       await request(app.getHttpServer()).delete(route).set('Cookie', cookies).expect(404);
     }
   });
+
+  // -------------------------------------------------------------------
+  // Phase 19 — Sales Executive client ownership
+  // -------------------------------------------------------------------
+
+  it('17. Sales Executive dashboard widgets are scoped to their own clients — Products stay organization-wide', async () => {
+    const salesCookies = await signIn(salesUser.email);
+    const superCookies = await signIn(superAdmin.email);
+
+    const ownClient = await createFixtureClient(orgA.id, `P19 Dash Own Client ${runId}`);
+    await prisma.client.update({ where: { id: ownClient.id }, data: { assignedToId: salesUser.id } });
+    const otherClient = await createFixtureClient(orgA.id, `P19 Dash Other Client ${runId}`);
+
+    const ownEnquiry = await createFixtureEnquiry(orgA.id, ownClient.id, {
+      title: `P19 Dash Own Enquiry ${runId}`,
+      stage: 'NEW',
+      source: 'WEBSITE',
+    });
+    const otherEnquiry = await createFixtureEnquiry(orgA.id, otherClient.id, {
+      title: `P19 Dash Other Enquiry ${runId}`,
+      stage: 'NEW',
+      source: 'WEBSITE',
+    });
+    await createFixtureQuotation(orgA.id, ownClient.id, {
+      quotationNumber: `QT-P19-OWN-${runId}`,
+    });
+    await createFixtureQuotation(orgA.id, otherClient.id, {
+      quotationNumber: `QT-P19-OTHER-${runId}`,
+    });
+    await createFixtureFollowUp(orgA.id, ownClient.id, {
+      subject: `P19 Dash Own Follow-up ${runId}`,
+      status: 'COMPLETED',
+      outcome: 'Done',
+      completedAt: new Date(),
+    });
+    await createFixtureFollowUp(orgA.id, otherClient.id, {
+      subject: `P19 Dash Other Follow-up ${runId}`,
+      status: 'COMPLETED',
+      outcome: 'Done',
+      completedAt: new Date(),
+    });
+
+    const [salesSummary, superSummary] = await Promise.all([
+      request(app.getHttpServer()).get('/dashboard/summary').set('Cookie', salesCookies).expect(200),
+      request(app.getHttpServer()).get('/dashboard/summary').set('Cookie', superCookies).expect(200),
+    ]);
+    // Sales Executive sees fewer clients/open enquiries than the
+    // organization-wide total; totalProducts is identical for both.
+    expect(salesSummary.body.totalClients).toBeLessThan(superSummary.body.totalClients);
+    expect(salesSummary.body.openEnquiries).toBeLessThan(superSummary.body.openEnquiries);
+    expect(salesSummary.body.totalProducts).toBe(superSummary.body.totalProducts);
+
+    const activity = await request(app.getHttpServer())
+      .get('/dashboard/recent-activity?limit=50')
+      .set('Cookie', salesCookies)
+      .expect(200);
+    const activityIds: string[] = activity.body.activities.map(
+      (a: { clientId?: string; enquiryId?: string; quotationId?: string; followUpId?: string }) =>
+        a.clientId ?? a.enquiryId ?? a.quotationId ?? a.followUpId,
+    );
+    expect(activityIds).toContain(ownClient.id);
+    expect(activityIds).toContain(ownEnquiry.id);
+    expect(activityIds).not.toContain(otherClient.id);
+    expect(activityIds).not.toContain(otherEnquiry.id);
+
+    const [salesLeadSources, superLeadSources] = await Promise.all([
+      request(app.getHttpServer()).get('/dashboard/lead-sources').set('Cookie', salesCookies).expect(200),
+      request(app.getHttpServer()).get('/dashboard/lead-sources').set('Cookie', superCookies).expect(200),
+    ]);
+    const websiteBucket = salesLeadSources.body.sources.find(
+      (s: { source: string }) => s.source === 'WEBSITE',
+    );
+    // The caller's own enquiry contributes to the bucket.
+    expect(websiteBucket.count).toBeGreaterThanOrEqual(1);
+    // The Sales Executive's total is strictly less than the organization-wide
+    // total (same metric, both queried with no period filter), proving the
+    // other rep's enquiry did not leak in.
+    expect(salesLeadSources.body.totalLeads).toBeLessThan(superLeadSources.body.totalLeads);
+  });
+
+  it('18. Admin and Super Admin retain organization-wide dashboard behavior', async () => {
+    const adminCookies = await signIn(adminUser.email);
+    const superCookies = await signIn(superAdmin.email);
+
+    const [adminSummary, superSummary] = await Promise.all([
+      request(app.getHttpServer()).get('/dashboard/summary').set('Cookie', adminCookies).expect(200),
+      request(app.getHttpServer()).get('/dashboard/summary').set('Cookie', superCookies).expect(200),
+    ]);
+    expect(adminSummary.body).toEqual(superSummary.body);
+  });
 });

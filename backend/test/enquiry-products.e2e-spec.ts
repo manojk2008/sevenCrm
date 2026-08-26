@@ -532,11 +532,18 @@ describe('Enquiry products (e2e)', () => {
     // Enquiry authorization is unchanged by this phase: all three roles
     // create/update enquiries. Products stay read-only for a Sales Executive
     // through the Products API — referencing one from an enquiry is a read.
+    //
+    // Phase 19: a Sales Executive may only create against a client assigned
+    // to themselves — basePayload()'s default clientId (clientA) is
+    // unassigned, so a client owned by salesUser is used here instead.
+    const ownClient = await createFixtureClient(orgA.id);
+    await prisma.client.update({ where: { id: ownClient.id }, data: { assignedToId: salesUser.id } });
+
     const cookies = await signIn(salesUser.email);
     const created = await request(app.getHttpServer())
       .post('/enquiries')
       .set('Cookie', cookies)
-      .send(basePayload({ productIds: [productA1.id] }))
+      .send(basePayload({ clientId: ownClient.id, productIds: [productA1.id] }))
       .expect(201);
     expect(attachedIds(created.body)).toEqual([productA1.id]);
 

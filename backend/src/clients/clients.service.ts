@@ -81,9 +81,23 @@ export class ClientsService {
 
   async create(dto: CreateClientDto, currentUser: CurrentUser): Promise<SafeClient> {
     this.assertCanCreate(currentUser);
+    const isSalesExec = currentUser.crmRole === UserRole.SALES_EXECUTIVE;
 
-    if (dto.assignedToId) {
-      await this.assertAssignedUserInOrg(dto.assignedToId, currentUser.organizationId);
+    // Sales Executive ownership rule (Phase 19): a Sales Executive may only
+    // ever own their own clients — an omitted assignedToId is forced to
+    // themselves, and any other explicit value is rejected outright rather
+    // than silently rewritten. SUPER_ADMIN/ADMIN are unaffected.
+    let assignedToId: string | null;
+    if (isSalesExec) {
+      if (dto.assignedToId !== undefined && dto.assignedToId !== currentUser.id) {
+        throw new BadRequestException('You can only create clients assigned to yourself.');
+      }
+      assignedToId = currentUser.id;
+    } else {
+      if (dto.assignedToId) {
+        await this.assertAssignedUserInOrg(dto.assignedToId, currentUser.organizationId);
+      }
+      assignedToId = dto.assignedToId ?? null;
     }
 
     try {
@@ -104,7 +118,7 @@ export class ClientsService {
           addressState: dto.addressState,
           addressPincode: dto.addressPincode,
           addressCountry: dto.addressCountry ?? 'India',
-          assignedToId: dto.assignedToId ?? null,
+          assignedToId,
           status: ClientStatus.ACTIVE,
           totalDeals: 0,
           totalRevenue: 0,
@@ -119,12 +133,16 @@ export class ClientsService {
 
   async findAllForOrg(currentUser: CurrentUser, query: ListClientsQueryDto): Promise<PaginatedClients> {
     this.assertCanRead(currentUser);
+    const isSalesExec = currentUser.crmRole === UserRole.SALES_EXECUTIVE;
 
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 25;
 
     const where: Prisma.ClientWhereInput = {
       organizationId: currentUser.organizationId,
+      // Sales Executive ownership rule (Phase 19): additive to the
+      // organizationId filter above, never a replacement of it.
+      ...(isSalesExec ? { assignedToId: currentUser.id } : {}),
       ...(query.status ? { status: query.status } : {}),
       ...(query.search
         ? {
@@ -159,15 +177,24 @@ export class ClientsService {
 
   async findOneForOrg(id: string, currentUser: CurrentUser): Promise<SafeClient> {
     this.assertCanRead(currentUser);
-    const client = await this.getOrgClientOrThrow(id, currentUser.organizationId);
+    const client = await this.getOrgClientOrThrow(id, currentUser);
     return this.toSafeClient(client);
   }
 
   async update(id: string, dto: UpdateClientDto, currentUser: CurrentUser): Promise<SafeClient> {
     this.assertCanUpdate(currentUser);
-    const existing = await this.getOrgClientOrThrow(id, currentUser.organizationId);
+    const isSalesExec = currentUser.crmRole === UserRole.SALES_EXECUTIVE;
+    const existing = await this.getOrgClientOrThrow(id, currentUser);
 
-    if (dto.assignedToId !== undefined && dto.assignedToId !== null) {
+    // Sales Executive ownership rule (Phase 19): cannot remove their own
+    // assignment (dto.assignedToId === null) and cannot reassign to anyone
+    // else — the only value that passes is their own id, or leaving the
+    // field untouched (undefined). SUPER_ADMIN/ADMIN are unaffected.
+    if (isSalesExec) {
+      if (dto.assignedToId !== undefined && dto.assignedToId !== currentUser.id) {
+        throw new BadRequestException('You cannot reassign or remove your own client assignment.');
+      }
+    } else if (dto.assignedToId !== undefined && dto.assignedToId !== null) {
       await this.assertAssignedUserInOrg(dto.assignedToId, currentUser.organizationId);
     }
 
@@ -201,7 +228,7 @@ export class ClientsService {
 
   async updateStatus(id: string, dto: UpdateClientStatusDto, currentUser: CurrentUser): Promise<SafeClient> {
     this.assertCanManageStatus(currentUser);
-    const existing = await this.getOrgClientOrThrow(id, currentUser.organizationId);
+    const existing = await this.getOrgClientOrThrow(id, currentUser);
 
     const data: Prisma.ClientUpdateInput = { status: dto.status };
     if (dto.status === ClientStatus.INACTIVE) {
@@ -218,7 +245,7 @@ export class ClientsService {
 
   async listContacts(clientId: string, currentUser: CurrentUser): Promise<SafeClientContact[]> {
     this.assertCanRead(currentUser);
-    const client = await this.getOrgClientOrThrow(clientId, currentUser.organizationId);
+    const client = await this.getOrgClientOrThrow(clientId, currentUser);
     return client.contacts;
   }
 
@@ -228,7 +255,7 @@ export class ClientsService {
     currentUser: CurrentUser,
   ): Promise<SafeClientContact> {
     this.assertCanManageContacts(currentUser);
-    await this.getOrgClientOrThrow(clientId, currentUser.organizationId);
+    await this.getOrgClientOrThrow(clientId, currentUser);
 
     return prisma.$transaction(async (tx) => {
       if (dto.isPrimary) {
@@ -257,7 +284,7 @@ export class ClientsService {
     currentUser: CurrentUser,
   ): Promise<SafeClientContact> {
     this.assertCanManageContacts(currentUser);
-    await this.getOrgClientOrThrow(clientId, currentUser.organizationId);
+    await this.getOrgClientOrThrow(clientId, currentUser);
     await this.getClientContactOrThrow(clientId, contactId);
 
     return prisma.$transaction(async (tx) => {
@@ -286,7 +313,7 @@ export class ClientsService {
     currentUser: CurrentUser,
   ): Promise<{ id: string }> {
     this.assertCanManageContacts(currentUser);
-    await this.getOrgClientOrThrow(clientId, currentUser.organizationId);
+    await this.getOrgClientOrThrow(clientId, currentUser);
     await this.getClientContactOrThrow(clientId, contactId);
 
     await prisma.clientContact.delete({ where: { id: contactId } });
@@ -296,12 +323,14 @@ export class ClientsService {
   // ---------------------------------------------------------------------
   // Authorization
   //
-  // SevenCRM has exactly three roles and no ownership/assignment-based
-  // access model anywhere in the codebase (Users is org-wide, not
-  // per-manager-scoped). Per the approved design, Sales Executives get the
-  // same organization-wide read/create/update access as Admins — there is
-  // no existing "only your own records" pattern to extend, and inventing
-  // one here would be a new, undocumented permission concept.
+  // Sales Executives read/create/update within the same three-role gate as
+  // Admins, but (Phase 19) are additionally scoped to clients assigned to
+  // themselves: findAllForOrg/getOrgClientOrThrow add an assignedToId
+  // filter, create() forces assignedToId to the caller, and update() blocks
+  // reassigning or unassigning their own client. Client ownership is the
+  // authoritative visibility boundary for every related CRM record
+  // (Enquiries/Quotations/Follow-ups) — see those services' own
+  // authorization comments.
   //
   // Status changes and contact management are deliberately narrower,
   // restricted to SUPER_ADMIN/ADMIN: deactivating a client is this CRM's
@@ -359,12 +388,20 @@ export class ClientsService {
     }
   }
 
-  private async getOrgClientOrThrow(id: string, organizationId: string): Promise<ClientWithRelations> {
+  private async getOrgClientOrThrow(id: string, currentUser: CurrentUser): Promise<ClientWithRelations> {
     // Never query by id alone — organizationId is part of the WHERE clause
     // so a client belonging to another org behaves as NOT FOUND, not 403,
-    // and never leaks whether the id exists elsewhere.
+    // and never leaks whether the id exists elsewhere. The Sales Executive
+    // ownership condition (Phase 19) is additive to that same WHERE clause
+    // for the same reason: another rep's client (or an unassigned one)
+    // behaves as NOT FOUND, never a 403 that would confirm it exists.
+    const isSalesExec = currentUser.crmRole === UserRole.SALES_EXECUTIVE;
     const client = await prisma.client.findFirst({
-      where: { id, organizationId },
+      where: {
+        id,
+        organizationId: currentUser.organizationId,
+        ...(isSalesExec ? { assignedToId: currentUser.id } : {}),
+      },
       include: CLIENT_INCLUDE,
     });
     if (!client) {

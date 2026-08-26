@@ -139,6 +139,8 @@ function UnavailableStat({ label, reason }: { label: string; reason: string }) {
 export function SalesContent() {
   const router = useRouter();
   const logout = useAuthStore((state) => state.logout);
+  const role = useAuthStore((state) => state.user?.role);
+  const isSalesExec = role === "sales-executive";
 
   const [period, setPeriod] = useState<PeriodValue>("all");
   const [tab, setTab] = useState<TabValue>("revenue");
@@ -657,8 +659,9 @@ export function SalesContent() {
                 <CardHeader>
                   <CardTitle>Revenue by representative</CardTitle>
                   <CardDescription>
-                    Attributed to the user currently assigned to each accepted quotation. The system
-                    keeps no assignment history, so reassigning a quotation moves its revenue.
+                    {isSalesExec
+                      ? "Your accepted-quotation revenue, from clients currently assigned to you."
+                      : "Attributed to the user currently assigned to each accepted quotation. The system keeps no assignment history, so reassigning a quotation moves its revenue."}
                   </CardDescription>
                 </CardHeader>
                 <CardContent>

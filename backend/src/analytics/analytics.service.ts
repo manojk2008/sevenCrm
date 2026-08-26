@@ -34,6 +34,9 @@ export class AnalyticsService {
   // (newEnquiries) is one Sales has no reason to compute; every revenue/
   // win-rate/average-deal-size figure is read by the frontend directly from
   // the existing /sales/* endpoints rather than being recomputed here.
+  //
+  // Phase 19: newEnquiries is scoped to the caller's own clients for a
+  // Sales Executive, via the client relation — never Enquiry.assignedToId.
 
   async getSummary(
     currentUser: CurrentUser,
@@ -41,10 +44,19 @@ export class AnalyticsService {
   ): Promise<SafeAnalyticsSummary> {
     this.assertCanRead(currentUser);
     const { organizationId } = currentUser;
+    const isSalesExec = currentUser.crmRole === UserRole.SALES_EXECUTIVE;
     const createdAt = this.createdAtFilter(query.from, query.to);
 
+    // Sales Executive ownership rule (Phase 19): scoped to enquiries
+    // belonging to the caller's own clients. Revenue/win-rate/average-deal
+    // figures are not computed here at all — the frontend reads those
+    // directly from /sales/*, which is already scoped (Phase 8 decision).
     const newEnquiries = await prisma.enquiry.count({
-      where: { organizationId, ...(createdAt ? { createdAt } : {}) },
+      where: {
+        organizationId,
+        ...(isSalesExec ? { client: { assignedToId: currentUser.id } } : {}),
+        ...(createdAt ? { createdAt } : {}),
+      },
     });
 
     return {

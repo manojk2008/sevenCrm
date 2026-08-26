@@ -155,12 +155,19 @@ export class QuotationsService {
     query: ListQuotationsQueryDto,
   ): Promise<PaginatedQuotations> {
     this.assertCanRead(currentUser);
+    const isSalesExec = currentUser.crmRole === UserRole.SALES_EXECUTIVE;
 
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 25;
 
     const where: Prisma.QuotationWhereInput = {
       organizationId: currentUser.organizationId,
+      // Sales Executive ownership rule (Phase 19): client ownership is
+      // authoritative — Quotation.assignedToId is deliberately NOT used as
+      // the visibility boundary (a quotation assigned to a colleague is
+      // still visible here if its client belongs to the caller). Additive
+      // to organizationId above, never a replacement of it.
+      ...(isSalesExec ? { client: { assignedToId: currentUser.id } } : {}),
       ...(query.status ? { status: query.status } : {}),
       ...(query.clientId ? { clientId: query.clientId } : {}),
       ...(query.enquiryId ? { enquiryId: query.enquiryId } : {}),
@@ -196,7 +203,7 @@ export class QuotationsService {
 
   async findOneForOrg(id: string, currentUser: CurrentUser): Promise<SafeQuotation> {
     this.assertCanRead(currentUser);
-    const quotation = await this.getOrgQuotationOrThrow(id, currentUser.organizationId);
+    const quotation = await this.getOrgQuotationOrThrow(id, currentUser);
     return this.toSafeQuotation(quotation);
   }
 
@@ -208,7 +215,7 @@ export class QuotationsService {
   // full rationale.
   async update(id: string, dto: UpdateQuotationDto, currentUser: CurrentUser): Promise<SafeQuotation> {
     this.assertCanManage(currentUser);
-    const existing = await this.getOrgQuotationOrThrow(id, currentUser.organizationId);
+    const existing = await this.getOrgQuotationOrThrow(id, currentUser);
 
     const effectiveClientId = existing.clientId;
 
@@ -286,7 +293,7 @@ export class QuotationsService {
     currentUser: CurrentUser,
   ): Promise<SafeQuotation> {
     this.assertCanManage(currentUser);
-    const existing = await this.getOrgQuotationOrThrow(id, currentUser.organizationId);
+    const existing = await this.getOrgQuotationOrThrow(id, currentUser);
 
     // No transition graph: any status may move to any other status. This
     // mirrors the only existing precedent for a multi-value workflow
@@ -306,8 +313,15 @@ export class QuotationsService {
   // Authorization
   //
   // Follows the approved Phase 6B instruction to mirror ProductsService's
-  // authorization pattern exactly: all three roles get organization-wide
-  // read, but only SUPER_ADMIN/ADMIN may create/update/change status.
+  // authorization pattern: all three roles get read, but only
+  // SUPER_ADMIN/ADMIN may create/update/change status — Phase 19 does not
+  // add any write access for Sales Executives.
+  //
+  // Phase 19: a Sales Executive's read is additionally scoped to
+  // quotations whose CLIENT is assigned to them (findAllForOrg/
+  // getOrgQuotationOrThrow, via the client relation). Quotation.assignedToId
+  // is deliberately NOT the visibility boundary — a quotation assigned to a
+  // colleague is still visible if it belongs to the caller's own client.
   //
   // This is a deliberate divergence from src/constants/roles.ts on the
   // frontend, which currently marks `quotations` as VIEW_CREATE_EDIT for
@@ -590,13 +604,23 @@ export class QuotationsService {
 
   private async getOrgQuotationOrThrow(
     id: string,
-    organizationId: string,
+    currentUser: CurrentUser,
   ): Promise<QuotationWithRelations> {
     // Never query by id alone — organizationId is part of the WHERE clause
     // so a quotation belonging to another org behaves as NOT FOUND, not
-    // 403, and never leaks whether the id exists elsewhere.
+    // 403, and never leaks whether the id exists elsewhere. Sales
+    // Executive ownership rule (Phase 19): the same additive condition via
+    // the client relation, never Quotation.assignedToId — a quotation
+    // assigned to a colleague but belonging to the caller's own client
+    // stays visible; one belonging to another rep's (or an unassigned)
+    // client is NOT FOUND, never a 403.
+    const isSalesExec = currentUser.crmRole === UserRole.SALES_EXECUTIVE;
     const quotation = await prisma.quotation.findFirst({
-      where: { id, organizationId },
+      where: {
+        id,
+        organizationId: currentUser.organizationId,
+        ...(isSalesExec ? { client: { assignedToId: currentUser.id } } : {}),
+      },
       include: QUOTATION_INCLUDE,
     });
     if (!quotation) {

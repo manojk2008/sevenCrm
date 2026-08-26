@@ -41,11 +41,14 @@ async function createFixtureUser(params: {
   return created.user;
 }
 
-async function createFixtureClient(organizationId: string, companyName?: string) {
+async function createFixtureClient(
+  organizationId: string,
+  options: { companyName?: string; assignedToId?: string } = {},
+) {
   return prisma.client.create({
     data: {
       organizationId,
-      companyName: companyName ?? `Enquiry Client ${uid()}`,
+      companyName: options.companyName ?? `Enquiry Client ${uid()}`,
       industry: 'IT Services',
       email: `enq-client-${uid()}@test.local`,
       phone: '+919876500000',
@@ -53,6 +56,7 @@ async function createFixtureClient(organizationId: string, companyName?: string)
       addressCity: 'Mumbai',
       addressState: 'Maharashtra',
       addressPincode: '400001',
+      assignedToId: options.assignedToId ?? null,
     },
   });
 }
@@ -65,9 +69,11 @@ describe('EnquiriesController (e2e)', () => {
   let superAdmin: { id: string; email: string };
   let adminUser: { id: string; email: string };
   let salesUser: { id: string; email: string };
+  let salesUserB: { id: string; email: string };
   let otherOrgAdmin: { id: string; email: string };
   let clientA: { id: string; companyName: string };
   let clientB: { id: string; companyName: string };
+  let clientOwnedBySales: { id: string; companyName: string };
 
   function basePayload(overrides: Record<string, unknown> = {}) {
     return {
@@ -138,6 +144,13 @@ describe('EnquiriesController (e2e)', () => {
       role: 'SALES_EXECUTIVE',
       department: 'Sales',
     });
+    salesUserB = await createFixtureUser({
+      email: `enq-sales-b-${runId}@test.local`,
+      name: 'Enq Sales Executive B',
+      organizationId: orgA.id,
+      role: 'SALES_EXECUTIVE',
+      department: 'Sales',
+    });
     otherOrgAdmin = await createFixtureUser({
       email: `enq-other-admin-${runId}@test.local`,
       name: 'Enq Other Org Admin',
@@ -148,6 +161,7 @@ describe('EnquiriesController (e2e)', () => {
 
     clientA = await createFixtureClient(orgA.id);
     clientB = await createFixtureClient(orgB.id);
+    clientOwnedBySales = await createFixtureClient(orgA.id, { assignedToId: salesUser.id });
   }, 30000);
 
   afterAll(async () => {
@@ -197,21 +211,27 @@ describe('EnquiriesController (e2e)', () => {
       .send(basePayload())
       .expect(201);
 
+    // Phase 19: a Sales Executive can only create against a client assigned
+    // to themselves — basePayload()'s default clientId (clientA) is
+    // unassigned, so clientOwnedBySales is used here instead.
     const salesCookies = await signIn(salesUser.email);
     const res = await request(app.getHttpServer())
       .post('/enquiries')
       .set('Cookie', salesCookies)
-      .send(basePayload())
+      .send(basePayload({ clientId: clientOwnedBySales.id }))
       .expect(201);
     expect(res.body.organizationId).toBe(orgA.id);
   });
 
   it('5. role boundaries: Sales Executive can read, update and change stage', async () => {
     const adminCookies = await signIn(adminUser.email);
+    // Phase 19: created against clientOwnedBySales so the Sales Executive
+    // below is actually authorized to reach it (client ownership is the
+    // visibility boundary, not who created the enquiry).
     const created = await request(app.getHttpServer())
       .post('/enquiries')
       .set('Cookie', adminCookies)
-      .send(basePayload())
+      .send(basePayload({ clientId: clientOwnedBySales.id }))
       .expect(201);
 
     const salesCookies = await signIn(salesUser.email);
@@ -459,7 +479,7 @@ describe('EnquiriesController (e2e)', () => {
   it('19. search matches enquiry title and client company name', async () => {
     const cookies = await signIn(superAdmin.email);
     const marker = `Zeta${uid()}`;
-    const namedClient = await createFixtureClient(orgA.id, `SearchCo${marker}`);
+    const namedClient = await createFixtureClient(orgA.id, { companyName: `SearchCo${marker}` });
 
     const byTitle = await request(app.getHttpServer())
       .post('/enquiries')
@@ -816,5 +836,129 @@ describe('EnquiriesController (e2e)', () => {
 
     const stillThere = await prisma.enquiry.findUnique({ where: { id: created.body.id } });
     expect(stillThere).not.toBeNull();
+  });
+
+  // -------------------------------------------------------------------
+  // Phase 19 — Sales Executive client ownership
+  // -------------------------------------------------------------------
+
+  it('35. Sales Executive list shows only enquiries whose client they own', async () => {
+    const adminCookies = await signIn(adminUser.email);
+    const salesCookies = await signIn(salesUser.email);
+    const otherRepClient = await createFixtureClient(orgA.id, { assignedToId: salesUserB.id });
+    const unassignedClient = await createFixtureClient(orgA.id);
+
+    const ownEnquiry = await request(app.getHttpServer())
+      .post('/enquiries')
+      .set('Cookie', salesCookies)
+      .send(basePayload({ clientId: clientOwnedBySales.id }))
+      .expect(201);
+    const otherRepEnquiry = await request(app.getHttpServer())
+      .post('/enquiries')
+      .set('Cookie', adminCookies)
+      .send(basePayload({ clientId: otherRepClient.id }))
+      .expect(201);
+    const unassignedEnquiry = await request(app.getHttpServer())
+      .post('/enquiries')
+      .set('Cookie', adminCookies)
+      .send(basePayload({ clientId: unassignedClient.id }))
+      .expect(201);
+
+    const listRes = await request(app.getHttpServer())
+      .get('/enquiries?pageSize=100')
+      .set('Cookie', salesCookies)
+      .expect(200);
+    const ids: string[] = listRes.body.data.map((e: { id: string }) => e.id);
+    expect(ids).toContain(ownEnquiry.body.id);
+    expect(ids).not.toContain(otherRepEnquiry.body.id);
+    expect(ids).not.toContain(unassignedEnquiry.body.id);
+  });
+
+  it('36. Sales Executive detail 404s on another-client and unassigned-client enquiries', async () => {
+    const adminCookies = await signIn(adminUser.email);
+    const salesCookies = await signIn(salesUser.email);
+    const otherRepClient = await createFixtureClient(orgA.id, { assignedToId: salesUserB.id });
+    const unassignedClient = await createFixtureClient(orgA.id);
+
+    const otherRepEnquiry = await request(app.getHttpServer())
+      .post('/enquiries')
+      .set('Cookie', adminCookies)
+      .send(basePayload({ clientId: otherRepClient.id }))
+      .expect(201);
+    const unassignedEnquiry = await request(app.getHttpServer())
+      .post('/enquiries')
+      .set('Cookie', adminCookies)
+      .send(basePayload({ clientId: unassignedClient.id }))
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .get(`/enquiries/${otherRepEnquiry.body.id}`)
+      .set('Cookie', salesCookies)
+      .expect(404);
+    await request(app.getHttpServer())
+      .get(`/enquiries/${unassignedEnquiry.body.id}`)
+      .set('Cookie', salesCookies)
+      .expect(404);
+  });
+
+  it('37. Sales Executive create against another user client is rejected (400)', async () => {
+    const salesCookies = await signIn(salesUser.email);
+    const otherRepClient = await createFixtureClient(orgA.id, { assignedToId: salesUserB.id });
+    const unassignedClient = await createFixtureClient(orgA.id);
+
+    await request(app.getHttpServer())
+      .post('/enquiries')
+      .set('Cookie', salesCookies)
+      .send(basePayload({ clientId: otherRepClient.id }))
+      .expect(400);
+    await request(app.getHttpServer())
+      .post('/enquiries')
+      .set('Cookie', salesCookies)
+      .send(basePayload({ clientId: unassignedClient.id }))
+      .expect(400);
+  });
+
+  it('38. Sales Executive create against own client works, and Enquiry.assignedToId remains freely settable', async () => {
+    const salesCookies = await signIn(salesUser.email);
+    // assignedToId is a distinct, secondary field — client ownership alone
+    // governs visibility, so it may still be set to any org user (even a
+    // colleague) without affecting who can see this enquiry going forward.
+    const created = await request(app.getHttpServer())
+      .post('/enquiries')
+      .set('Cookie', salesCookies)
+      .send(basePayload({ clientId: clientOwnedBySales.id, assignedToId: salesUserB.id }))
+      .expect(201);
+    expect(created.body.assignedTo.id).toBe(salesUserB.id);
+
+    // Still visible to the owning Sales Executive despite assignedToId
+    // pointing at a colleague — client ownership is authoritative.
+    await request(app.getHttpServer())
+      .get(`/enquiries/${created.body.id}`)
+      .set('Cookie', salesCookies)
+      .expect(200);
+  });
+
+  it('39. Admin and Super Admin retain organization-wide enquiry visibility', async () => {
+    const salesCookies = await signIn(salesUser.email);
+    const adminCookies = await signIn(adminUser.email);
+    const superCookies = await signIn(superAdmin.email);
+
+    const ownEnquiry = await request(app.getHttpServer())
+      .post('/enquiries')
+      .set('Cookie', salesCookies)
+      .send(basePayload({ clientId: clientOwnedBySales.id }))
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .get(`/enquiries/${ownEnquiry.body.id}`)
+      .set('Cookie', adminCookies)
+      .expect(200);
+
+    const listRes = await request(app.getHttpServer())
+      .get('/enquiries?pageSize=100')
+      .set('Cookie', superCookies)
+      .expect(200);
+    const ids: string[] = listRes.body.data.map((e: { id: string }) => e.id);
+    expect(ids).toContain(ownEnquiry.body.id);
   });
 });

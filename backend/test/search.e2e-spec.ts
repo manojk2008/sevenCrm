@@ -468,4 +468,59 @@ describe('SearchController (e2e)', () => {
       .set('Cookie', cookies)
       .expect(404);
   });
+
+  // -------------------------------------------------------------------
+  // Phase 19 — Sales Executive client ownership
+  // -------------------------------------------------------------------
+
+  it('22. Sales Executive search results are scoped to own clients/enquiries/quotations — Products stay organization-wide', async () => {
+    const salesCookies = await signIn(salesUser.email);
+    const ownToken = `P19Own${runId}`;
+
+    const ownClient = await createFixtureClient(orgA.id, `${ownToken} Client`);
+    await prisma.client.update({ where: { id: ownClient.id }, data: { assignedToId: salesUser.id } });
+    const ownEnquiry = await createFixtureEnquiry(orgA.id, ownClient.id, {
+      title: `${ownToken} Enquiry`,
+    });
+    const ownQuotation = await createFixtureQuotation(orgA.id, ownClient.id, {
+      quotationNumber: `QT-${ownToken}`,
+    });
+
+    // clientA/enquiryA/quotationA (the shared TOKEN fixtures) are
+    // unassigned — must not be found by the Sales Executive.
+    const unassignedRes = await request(app.getHttpServer())
+      .get(`/search?q=${TOKEN}`)
+      .set('Cookie', salesCookies)
+      .expect(200);
+    const unassignedIds: string[] = unassignedRes.body.results.map((r: { id: string }) => r.id);
+    expect(unassignedIds).not.toContain(clientA.id);
+    expect(unassignedIds).not.toContain(enquiryA.id);
+    expect(unassignedIds).not.toContain(quotationA.id);
+    // Product search stays organization-wide even for a Sales Executive.
+    expect(unassignedIds).toContain(productA.id);
+
+    // The caller's own client/enquiry/quotation ARE found.
+    const ownRes = await request(app.getHttpServer())
+      .get(`/search?q=${encodeURIComponent(ownToken)}`)
+      .set('Cookie', salesCookies)
+      .expect(200);
+    const ownIds: string[] = ownRes.body.results.map((r: { id: string }) => r.id);
+    expect(ownIds).toContain(ownClient.id);
+    expect(ownIds).toContain(ownEnquiry.id);
+    expect(ownIds).toContain(ownQuotation.id);
+  });
+
+  it('23. Admin and Super Admin retain organization-wide search results', async () => {
+    const adminCookies = await signIn(adminUser.email);
+    const superCookies = await signIn(superAdmin.email);
+
+    const [adminRes, superRes] = await Promise.all([
+      request(app.getHttpServer()).get(`/search?q=${TOKEN}`).set('Cookie', adminCookies).expect(200),
+      request(app.getHttpServer()).get(`/search?q=${TOKEN}`).set('Cookie', superCookies).expect(200),
+    ]);
+    const adminIds: string[] = adminRes.body.results.map((r: { id: string }) => r.id);
+    const superIds: string[] = superRes.body.results.map((r: { id: string }) => r.id);
+    expect(adminIds).toContain(clientA.id);
+    expect(superIds).toContain(clientA.id);
+  });
 });

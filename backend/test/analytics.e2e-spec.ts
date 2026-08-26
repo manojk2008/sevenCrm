@@ -298,4 +298,40 @@ describe('AnalyticsController (e2e)', () => {
       .set('Cookie', cookies)
       .expect(404);
   });
+
+  // -------------------------------------------------------------------
+  // Phase 19 — Sales Executive client ownership
+  // -------------------------------------------------------------------
+
+  it('13. Sales Executive newEnquiries is scoped to enquiries of assigned clients', async () => {
+    const salesCookies = await signIn(salesUser.email);
+    const superCookies = await signIn(superAdmin.email);
+
+    const ownClient = await createFixtureClient(orgA.id, `P19 Analytics Own Client ${runId}`);
+    await prisma.client.update({ where: { id: ownClient.id }, data: { assignedToId: salesUser.id } });
+    const otherClient = await createFixtureClient(orgA.id, `P19 Analytics Other Client ${runId}`);
+
+    await createFixtureEnquiry(orgA.id, ownClient.id);
+    await createFixtureEnquiry(orgA.id, otherClient.id);
+
+    const [salesRes, superRes] = await Promise.all([
+      request(app.getHttpServer()).get('/analytics/summary').set('Cookie', salesCookies).expect(200),
+      request(app.getHttpServer()).get('/analytics/summary').set('Cookie', superCookies).expect(200),
+    ]);
+    // The Sales Executive's count is strictly less than the
+    // organization-wide total, proving the other rep's enquiry did not
+    // leak in even though it was raised in the same window.
+    expect(salesRes.body.newEnquiries).toBeLessThan(superRes.body.newEnquiries);
+  });
+
+  it('14. Admin and Super Admin retain organization-wide analytics behavior', async () => {
+    const adminCookies = await signIn(adminUser.email);
+    const superCookies = await signIn(superAdmin.email);
+
+    const [adminRes, superRes] = await Promise.all([
+      request(app.getHttpServer()).get('/analytics/summary').set('Cookie', adminCookies).expect(200),
+      request(app.getHttpServer()).get('/analytics/summary').set('Cookie', superCookies).expect(200),
+    ]);
+    expect(adminRes.body.newEnquiries).toBe(superRes.body.newEnquiries);
+  });
 });

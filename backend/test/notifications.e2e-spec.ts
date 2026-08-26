@@ -465,4 +465,39 @@ describe('NotificationsController (e2e)', () => {
       .set('Cookie', cookies)
       .expect(404);
   });
+
+  // -------------------------------------------------------------------
+  // Phase 19 — Sales Executive client ownership (inherited from
+  // DashboardService.getRecentActivity; NotificationsService itself is
+  // unmodified — this verifies the fix actually propagates).
+  // -------------------------------------------------------------------
+
+  it('16. Sales Executive notification feed is scoped to own-client activity — no colleague or cross-org activity', async () => {
+    const salesCookies = await signIn(salesUser.email);
+    const superCookies = await signIn(superAdmin.email);
+
+    const ownClient = await createFixtureClient(orgA.id, `P19 Notif Own Client ${runId}`);
+    await prisma.client.update({ where: { id: ownClient.id }, data: { assignedToId: salesUser.id } });
+    const otherClient = await createFixtureClient(orgA.id, `P19 Notif Other Client ${runId}`);
+
+    const otherEnquiry = await createFixtureEnquiry(orgA.id, otherClient.id, {
+      title: `P19 Notif Other Enquiry ${runId}`,
+    });
+
+    const [salesFeed, superFeed] = await Promise.all([
+      request(app.getHttpServer()).get('/notifications?limit=50').set('Cookie', salesCookies).expect(200),
+      request(app.getHttpServer()).get('/notifications?limit=50').set('Cookie', superCookies).expect(200),
+    ]);
+
+    const salesHrefs: string[] = salesFeed.body.notifications.map((n: { href: string }) => n.href);
+    expect(salesHrefs).toContain(`/clients/${ownClient.id}`);
+    expect(salesHrefs).not.toContain(`/clients/${otherClient.id}`);
+
+    // Super Admin's feed is unaffected — sees the other client's activity
+    // that the Sales Executive correctly does not.
+    const superIncludesOther = superFeed.body.notifications.some(
+      (n: { description: string }) => n.description.includes(otherEnquiry.title),
+    );
+    expect(superIncludesOther).toBe(true);
+  });
 });

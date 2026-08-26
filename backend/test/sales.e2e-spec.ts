@@ -1147,4 +1147,197 @@ describe('SalesController (e2e)', () => {
     expect(lost.body.data).toEqual([]);
     expect(lost.body.totalPages).toBe(1);
   });
+
+  // -------------------------------------------------------------------
+  // Phase 19 — Sales Executive revenue scoped by client ownership
+  // -------------------------------------------------------------------
+
+  it('30. Sales Executive revenue is scoped to accepted quotations of clients assigned to them — quotation.assignedToId never determines it', async () => {
+    const salesCookies = await signIn(salesUser.email);
+
+    const ownClient = await createFixtureClient(orgA.id, `P19 Own Client ${runId}`);
+    await prisma.client.update({ where: { id: ownClient.id }, data: { assignedToId: salesUser.id } });
+    const otherClient = await createFixtureClient(orgA.id, `P19 Other Client ${runId}`);
+    await prisma.client.update({ where: { id: otherClient.id }, data: { assignedToId: adminUser.id } });
+    const unassignedClient = await createFixtureClient(orgA.id, `P19 Unassigned Client ${runId}`);
+
+    // Own client, ACCEPTED, but quotation.assignedToId points to a
+    // different rep — must still count; client ownership is authoritative.
+    await seedQuotation({
+      organizationId: orgA.id,
+      clientId: ownClient.id,
+      status: 'ACCEPTED',
+      assignedToId: adminUser.id,
+      subtotal: 1000,
+      discountAmount: 0,
+      taxAmount: 0,
+      grandTotal: 1000,
+      lines: [
+        {
+          productId: null,
+          productNameSnapshot: 'P19 Own-client line',
+          quantity: 1,
+          unitPriceSnapshot: 1000,
+          discountPercentage: 0,
+          taxRate: 0,
+          lineAmount: 1000,
+        },
+      ],
+    });
+
+    // Another rep's client, ACCEPTED, quotation.assignedToId IS the caller
+    // — must NOT count; quotation.assignedToId is never the revenue
+    // boundary.
+    await seedQuotation({
+      organizationId: orgA.id,
+      clientId: otherClient.id,
+      status: 'ACCEPTED',
+      assignedToId: salesUser.id,
+      subtotal: 5000,
+      discountAmount: 0,
+      taxAmount: 0,
+      grandTotal: 5000,
+      lines: [
+        {
+          productId: null,
+          productNameSnapshot: 'P19 Other-client line',
+          quantity: 1,
+          unitPriceSnapshot: 5000,
+          discountPercentage: 0,
+          taxRate: 0,
+          lineAmount: 5000,
+        },
+      ],
+    });
+
+    // Unassigned client, ACCEPTED — must NOT count.
+    await seedQuotation({
+      organizationId: orgA.id,
+      clientId: unassignedClient.id,
+      status: 'ACCEPTED',
+      subtotal: 3000,
+      discountAmount: 0,
+      taxAmount: 0,
+      grandTotal: 3000,
+      lines: [
+        {
+          productId: null,
+          productNameSnapshot: 'P19 Unassigned-client line',
+          quantity: 1,
+          unitPriceSnapshot: 3000,
+          discountPercentage: 0,
+          taxRate: 0,
+          lineAmount: 3000,
+        },
+      ],
+    });
+
+    const summary = await request(app.getHttpServer())
+      .get('/sales/summary')
+      .set('Cookie', salesCookies)
+      .expect(200);
+    expect(summary.body.revenue.netAcceptedRevenue).toBe(1000);
+    expect(summary.body.revenue.grossAcceptedValue).toBe(1000);
+    expect(summary.body.revenue.acceptedQuotationCount).toBe(1);
+
+    const byClient = await request(app.getHttpServer())
+      .get('/sales/revenue-by-client')
+      .set('Cookie', salesCookies)
+      .expect(200);
+    expect(byClient.body).toHaveLength(1);
+    expect(byClient.body[0].clientId).toBe(ownClient.id);
+    expect(byClient.body[0].netAcceptedRevenue).toBe(1000);
+
+    const byProduct = await request(app.getHttpServer())
+      .get('/sales/revenue-by-product')
+      .set('Cookie', salesCookies)
+      .expect(200);
+    const productTotal = byProduct.body.reduce(
+      (sum: number, row: { netAcceptedRevenue: number }) => sum + row.netAcceptedRevenue,
+      0,
+    );
+    expect(productTotal).toBe(1000);
+
+    const byPeriod = await request(app.getHttpServer())
+      .get('/sales/revenue-by-period')
+      .set('Cookie', salesCookies)
+      .expect(200);
+    const periodTotal = byPeriod.body.buckets.reduce(
+      (sum: number, bucket: { netAcceptedRevenue: number }) => sum + bucket.netAcceptedRevenue,
+      0,
+    );
+    expect(periodTotal).toBe(1000);
+  });
+
+  it('31. Sales Executive lost enquiries are scoped to assigned clients', async () => {
+    const salesCookies = await signIn(salesUser.email);
+
+    const ownClient = await createFixtureClient(orgA.id, `P19 Lost Own Client ${runId}`);
+    await prisma.client.update({ where: { id: ownClient.id }, data: { assignedToId: salesUser.id } });
+    const otherClient = await createFixtureClient(orgA.id, `P19 Lost Other Client ${runId}`);
+
+    const ownLost = await createFixtureEnquiry(orgA.id, ownClient.id, {
+      stage: 'LOST',
+      lostReason: 'Budget cuts (own client)',
+    });
+    const otherLost = await createFixtureEnquiry(orgA.id, otherClient.id, {
+      stage: 'LOST',
+      lostReason: 'Budget cuts (other client)',
+    });
+
+    const res = await request(app.getHttpServer())
+      .get('/sales/lost-enquiries?pageSize=100')
+      .set('Cookie', salesCookies)
+      .expect(200);
+    const ids: string[] = res.body.data.map((e: { id: string }) => e.id);
+    expect(ids).toContain(ownLost.id);
+    expect(ids).not.toContain(otherLost.id);
+  });
+
+  it('32. Sales Executive revenue-by-representative returns exactly one self row with no colleague information', async () => {
+    const salesCookies = await signIn(salesUser.email);
+
+    const res = await request(app.getHttpServer())
+      .get('/sales/revenue-by-representative')
+      .set('Cookie', salesCookies)
+      .expect(200);
+
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0].userId).toBe(salesUser.id);
+    expect(res.body[0].name).toBe(salesUser.name);
+    expect(res.body[0].email).toBe(salesUser.email);
+    // Never a colleague's name, or the generic "Unassigned" bucket, in the
+    // response — the multi-representative breakdown is not exposed at all.
+    expect(res.body.some((r: { name: string }) => r.name === adminUser.name)).toBe(false);
+    expect(res.body.some((r: { name: string }) => r.name === 'Unassigned')).toBe(false);
+  });
+
+  it('33. Admin and Super Admin retain organization-wide revenue figures unaffected by Sales Executive scoping', async () => {
+    const adminCookies = await signIn(adminUser.email);
+    const superCookies = await signIn(superAdmin.email);
+    const salesCookies = await signIn(salesUser.email);
+
+    const [adminSummary, superSummary, salesSummary] = await Promise.all([
+      request(app.getHttpServer()).get('/sales/summary').set('Cookie', adminCookies).expect(200),
+      request(app.getHttpServer()).get('/sales/summary').set('Cookie', superCookies).expect(200),
+      request(app.getHttpServer()).get('/sales/summary').set('Cookie', salesCookies).expect(200),
+    ]);
+
+    // Admin and Super Admin see the same organization-wide total, which
+    // must include revenue the Sales Executive's own scoped view excludes.
+    expect(adminSummary.body.revenue.netAcceptedRevenue).toBe(
+      superSummary.body.revenue.netAcceptedRevenue,
+    );
+    expect(adminSummary.body.revenue.netAcceptedRevenue).toBeGreaterThan(
+      salesSummary.body.revenue.netAcceptedRevenue,
+    );
+
+    const adminByRep = await request(app.getHttpServer())
+      .get('/sales/revenue-by-representative')
+      .set('Cookie', adminCookies)
+      .expect(200);
+    // Admin keeps the full multi-representative breakdown — never
+    // collapsed to a single row.
+    expect(adminByRep.body.length).toBeGreaterThan(1);
+  });
 });

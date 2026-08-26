@@ -63,6 +63,7 @@ describe('ClientsController (e2e)', () => {
   let superAdmin: { id: string; email: string };
   let adminUser: { id: string; email: string };
   let salesUser: { id: string; email: string };
+  let salesUserB: { id: string; email: string };
   let otherOrgAdmin: { id: string; email: string };
 
   async function signIn(email: string): Promise<string[]> {
@@ -120,6 +121,13 @@ describe('ClientsController (e2e)', () => {
     salesUser = await createFixtureUser({
       email: `sales-${runId}@test.local`,
       name: 'Test Sales Executive',
+      organizationId: orgA.id,
+      role: 'SALES_EXECUTIVE',
+      department: 'Sales',
+    });
+    salesUserB = await createFixtureUser({
+      email: `sales-b-${runId}@test.local`,
+      name: 'Test Sales Executive B',
       organizationId: orgA.id,
       role: 'SALES_EXECUTIVE',
       department: 'Sales',
@@ -184,10 +192,14 @@ describe('ClientsController (e2e)', () => {
 
   it('4b. Sales Executive rule: can read/create/update but cannot change client status', async () => {
     const adminCookies = await signIn(adminUser.email);
+    // Phase 19: created assigned to salesUser — an unassigned client would
+    // now be correctly invisible to them, which would defeat this test's
+    // intent (verifying the read/update-allowed, status-change-forbidden
+    // distinction on a client they can actually reach).
     const created = await request(app.getHttpServer())
       .post('/clients')
       .set('Cookie', adminCookies)
-      .send(baseClientPayload())
+      .send(baseClientPayload({ assignedToId: salesUser.id }))
       .expect(201);
 
     const salesCookies = await signIn(salesUser.email);
@@ -212,10 +224,11 @@ describe('ClientsController (e2e)', () => {
 
   it('4c. Sales Executive rule: cannot manage client contacts', async () => {
     const adminCookies = await signIn(adminUser.email);
+    // Phase 19: created assigned to salesUser — see 4b's comment.
     const created = await request(app.getHttpServer())
       .post('/clients')
       .set('Cookie', adminCookies)
-      .send(baseClientPayload())
+      .send(baseClientPayload({ assignedToId: salesUser.id }))
       .expect(201);
 
     const salesCookies = await signIn(salesUser.email);
@@ -568,5 +581,178 @@ describe('ClientsController (e2e)', () => {
       .set('Cookie', cookies)
       .send(baseClientPayload({ notARealField: 'nope' }))
       .expect(400);
+  });
+
+  // -------------------------------------------------------------------
+  // Phase 19 — Sales Executive client ownership
+  // -------------------------------------------------------------------
+
+  it('26. Sales Executive create with omitted assignedToId is forced to self', async () => {
+    const cookies = await signIn(salesUser.email);
+    const created = await request(app.getHttpServer())
+      .post('/clients')
+      .set('Cookie', cookies)
+      .send(baseClientPayload())
+      .expect(201);
+    expect(created.body.assignedTo.id).toBe(salesUser.id);
+  });
+
+  it('27. Sales Executive create with own assignedToId is allowed', async () => {
+    const cookies = await signIn(salesUser.email);
+    const created = await request(app.getHttpServer())
+      .post('/clients')
+      .set('Cookie', cookies)
+      .send(baseClientPayload({ assignedToId: salesUser.id }))
+      .expect(201);
+    expect(created.body.assignedTo.id).toBe(salesUser.id);
+  });
+
+  it('28. Sales Executive create with another user assignedToId is rejected (400)', async () => {
+    const cookies = await signIn(salesUser.email);
+    await request(app.getHttpServer())
+      .post('/clients')
+      .set('Cookie', cookies)
+      .send(baseClientPayload({ assignedToId: salesUserB.id }))
+      .expect(400);
+    await request(app.getHttpServer())
+      .post('/clients')
+      .set('Cookie', cookies)
+      .send(baseClientPayload({ assignedToId: adminUser.id }))
+      .expect(400);
+  });
+
+  it('29. Sales Executive list sees only own clients — another rep and unassigned clients hidden', async () => {
+    const adminCookies = await signIn(adminUser.email);
+    const salesCookies = await signIn(salesUser.email);
+
+    const ownClient = await request(app.getHttpServer())
+      .post('/clients')
+      .set('Cookie', salesCookies)
+      .send(baseClientPayload())
+      .expect(201);
+
+    const otherRepClient = await request(app.getHttpServer())
+      .post('/clients')
+      .set('Cookie', adminCookies)
+      .send(baseClientPayload({ assignedToId: salesUserB.id }))
+      .expect(201);
+
+    const unassignedClient = await request(app.getHttpServer())
+      .post('/clients')
+      .set('Cookie', adminCookies)
+      .send(baseClientPayload())
+      .expect(201);
+
+    const listRes = await request(app.getHttpServer())
+      .get('/clients?pageSize=100')
+      .set('Cookie', salesCookies)
+      .expect(200);
+
+    const ids: string[] = listRes.body.data.map((c: { id: string }) => c.id);
+    expect(ids).toContain(ownClient.body.id);
+    expect(ids).not.toContain(otherRepClient.body.id);
+    expect(ids).not.toContain(unassignedClient.body.id);
+    for (const client of listRes.body.data) {
+      expect(client.assignedTo?.id).toBe(salesUser.id);
+    }
+  });
+
+  it('30. Sales Executive detail 404s on another rep client and on unassigned client', async () => {
+    const adminCookies = await signIn(adminUser.email);
+    const salesCookies = await signIn(salesUser.email);
+
+    const otherRepClient = await request(app.getHttpServer())
+      .post('/clients')
+      .set('Cookie', adminCookies)
+      .send(baseClientPayload({ assignedToId: salesUserB.id }))
+      .expect(201);
+    const unassignedClient = await request(app.getHttpServer())
+      .post('/clients')
+      .set('Cookie', adminCookies)
+      .send(baseClientPayload())
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .get(`/clients/${otherRepClient.body.id}`)
+      .set('Cookie', salesCookies)
+      .expect(404);
+    await request(app.getHttpServer())
+      .get(`/clients/${unassignedClient.body.id}`)
+      .set('Cookie', salesCookies)
+      .expect(404);
+    // Cannot reach update on a client that isn't theirs either — 404 before
+    // any business-rule check runs.
+    await request(app.getHttpServer())
+      .patch(`/clients/${otherRepClient.body.id}`)
+      .set('Cookie', salesCookies)
+      .send({ notes: 'attempted takeover' })
+      .expect(404);
+  });
+
+  it('31. Sales Executive cannot remove their own client assignment (400)', async () => {
+    const salesCookies = await signIn(salesUser.email);
+    const created = await request(app.getHttpServer())
+      .post('/clients')
+      .set('Cookie', salesCookies)
+      .send(baseClientPayload())
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .patch(`/clients/${created.body.id}`)
+      .set('Cookie', salesCookies)
+      .send({ assignedToId: null })
+      .expect(400);
+
+    const stillAssigned = await prisma.client.findUniqueOrThrow({ where: { id: created.body.id } });
+    expect(stillAssigned.assignedToId).toBe(salesUser.id);
+  });
+
+  it('32. Sales Executive cannot reassign their client to another user (400)', async () => {
+    const salesCookies = await signIn(salesUser.email);
+    const created = await request(app.getHttpServer())
+      .post('/clients')
+      .set('Cookie', salesCookies)
+      .send(baseClientPayload())
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .patch(`/clients/${created.body.id}`)
+      .set('Cookie', salesCookies)
+      .send({ assignedToId: salesUserB.id })
+      .expect(400);
+
+    const stillAssigned = await prisma.client.findUniqueOrThrow({ where: { id: created.body.id } });
+    expect(stillAssigned.assignedToId).toBe(salesUser.id);
+  });
+
+  it('33. Admin and Super Admin retain organization-wide visibility regardless of assignment', async () => {
+    const salesCookies = await signIn(salesUser.email);
+    const adminCookies = await signIn(adminUser.email);
+    const superCookies = await signIn(superAdmin.email);
+
+    const ownedBySalesUser = await request(app.getHttpServer())
+      .post('/clients')
+      .set('Cookie', salesCookies)
+      .send(baseClientPayload())
+      .expect(201);
+
+    // Admin can read and update a client it does not own.
+    await request(app.getHttpServer())
+      .get(`/clients/${ownedBySalesUser.body.id}`)
+      .set('Cookie', adminCookies)
+      .expect(200);
+    await request(app.getHttpServer())
+      .patch(`/clients/${ownedBySalesUser.body.id}`)
+      .set('Cookie', adminCookies)
+      .send({ assignedToId: salesUserB.id })
+      .expect(200);
+
+    // Super Admin sees it in the full org-wide list.
+    const listRes = await request(app.getHttpServer())
+      .get('/clients?pageSize=100')
+      .set('Cookie', superCookies)
+      .expect(200);
+    const ids: string[] = listRes.body.data.map((c: { id: string }) => c.id);
+    expect(ids).toContain(ownedBySalesUser.body.id);
   });
 });
