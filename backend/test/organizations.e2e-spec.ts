@@ -402,7 +402,24 @@ describe('OrganizationsController (e2e)', () => {
       .expect(200);
 
     expect(Object.keys(res.body).sort()).toEqual(
-      ['address', 'createdAt', 'email', 'gstNumber', 'id', 'name', 'phone', 'slug', 'updatedAt', 'website'].sort(),
+      [
+        'address',
+        'createdAt',
+        'email',
+        'gstNumber',
+        'id',
+        'name',
+        'phone',
+        'slug',
+        'updatedAt',
+        'website',
+        // Phase 17 Branding — approved additions to the Organization API
+        // contract (see OrganizationsService.toSafeOrganization).
+        'primaryColor',
+        'secondaryColor',
+        'quotationHeaderText',
+        'quotationFooterText',
+      ].sort(),
     );
     expect(res.body).not.toHaveProperty('users');
     expect(res.body).not.toHaveProperty('sessions');

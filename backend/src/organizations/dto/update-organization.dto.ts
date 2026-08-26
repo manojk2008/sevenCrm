@@ -1,4 +1,10 @@
-import { IsEmail, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import {
+  IsEmail,
+  IsOptional,
+  IsString,
+  MaxLength,
+  MinLength,
+} from 'class-validator';
 
 // Self-service "current organization" settings (PATCH /organizations/me)
 // only. Deliberately excludes id, organizationId, slug, createdAt, and
@@ -37,4 +43,26 @@ export class UpdateOrganizationDto {
   @IsString()
   @MaxLength(15)
   gstNumber?: string;
+
+  // Branding (Phase 17, P1 scope) — see the Organization model comment in
+  // schema.prisma for why these four fields only (no logo/favicon).
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  primaryColor?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  secondaryColor?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  quotationHeaderText?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  quotationFooterText?: string;
 }

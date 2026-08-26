@@ -1,4 +1,8 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { prisma } from '../auth/auth';
 import { UserRole } from '../../generated/prisma/enums';
 import type { AppSession } from '../auth/session.types';
@@ -15,6 +19,10 @@ interface RawOrganization {
   email: string | null;
   website: string | null;
   gstNumber: string | null;
+  primaryColor: string | null;
+  secondaryColor: string | null;
+  quotationHeaderText: string | null;
+  quotationFooterText: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -28,6 +36,10 @@ export interface SafeOrganization {
   email: string | null;
   website: string | null;
   gstNumber: string | null;
+  primaryColor: string | null;
+  secondaryColor: string | null;
+  quotationHeaderText: string | null;
+  quotationFooterText: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -44,7 +56,10 @@ export class OrganizationsService {
     return this.toSafeOrganization(organization);
   }
 
-  async updateMine(dto: UpdateOrganizationDto, currentUser: CurrentUser): Promise<SafeOrganization> {
+  async updateMine(
+    dto: UpdateOrganizationDto,
+    currentUser: CurrentUser,
+  ): Promise<SafeOrganization> {
     this.assertCanEdit(currentUser);
 
     const updated = await prisma.organization.update({
@@ -56,14 +71,31 @@ export class OrganizationsService {
         ...(dto.email !== undefined ? { email: dto.email } : {}),
         ...(dto.website !== undefined ? { website: dto.website } : {}),
         ...(dto.gstNumber !== undefined ? { gstNumber: dto.gstNumber } : {}),
+        ...(dto.primaryColor !== undefined
+          ? { primaryColor: dto.primaryColor }
+          : {}),
+        ...(dto.secondaryColor !== undefined
+          ? { secondaryColor: dto.secondaryColor }
+          : {}),
+        ...(dto.quotationHeaderText !== undefined
+          ? { quotationHeaderText: dto.quotationHeaderText }
+          : {}),
+        ...(dto.quotationFooterText !== undefined
+          ? { quotationFooterText: dto.quotationFooterText }
+          : {}),
       },
     });
     return this.toSafeOrganization(updated);
   }
 
   private assertCanEdit(currentUser: CurrentUser): void {
-    if (currentUser.crmRole !== UserRole.SUPER_ADMIN && currentUser.crmRole !== UserRole.ADMIN) {
-      throw new ForbiddenException('Only a Super Admin or Admin can edit company settings.');
+    if (
+      currentUser.crmRole !== UserRole.SUPER_ADMIN &&
+      currentUser.crmRole !== UserRole.ADMIN
+    ) {
+      throw new ForbiddenException(
+        'Only a Super Admin or Admin can edit company settings.',
+      );
     }
   }
 
@@ -77,6 +109,10 @@ export class OrganizationsService {
       email: organization.email,
       website: organization.website,
       gstNumber: organization.gstNumber,
+      primaryColor: organization.primaryColor,
+      secondaryColor: organization.secondaryColor,
+      quotationHeaderText: organization.quotationHeaderText,
+      quotationFooterText: organization.quotationFooterText,
       createdAt: organization.createdAt,
       updatedAt: organization.updatedAt,
     };

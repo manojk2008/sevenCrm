@@ -8,7 +8,7 @@ export function RoleSettings() {
       <div>
         <h2 className="text-xl font-semibold tracking-tight">Roles & Permissions</h2>
         <p className="text-sm text-muted-foreground">
-          Define access levels for different roles in your organization.
+          What each of SevenCRM&apos;s three fixed roles can currently do.
         </p>
       </div>
       

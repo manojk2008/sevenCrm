@@ -25,6 +25,8 @@ export const AUDITED_ENTITY_TYPES = [
   'PRODUCT_GROUP',
   'USER',
   'ORGANIZATION',
+  'TAX_RATE',
+  'EMAIL_TEMPLATE',
 ] as const;
 
 export type AuditedEntityType = (typeof AUDITED_ENTITY_TYPES)[number];
@@ -185,7 +187,27 @@ export const AUDITED_MODELS: Record<string, AuditModelConfig> = {
       'email',
       'website',
       'gstNumber',
+      // Branding (Phase 17) — audited for free via this existing entry;
+      // no explicit audit call was added to OrganizationsService.
+      'primaryColor',
+      'secondaryColor',
+      'quotationHeaderText',
+      'quotationFooterText',
     ],
     label: (row) => toLabel(row.name),
+  },
+  // Phase 17 Settings additions below — same whitelist architecture, no
+  // explicit audit calls in TaxRatesService/EmailTemplatesService.
+  TaxRate: {
+    entityType: 'TAX_RATE',
+    statusField: 'status',
+    fields: ['name', 'rate', 'isDefault', 'status'],
+    label: (row) => toLabel(row.name),
+  },
+  EmailTemplate: {
+    entityType: 'EMAIL_TEMPLATE',
+    // No status concept — a template is either edited or not.
+    fields: ['key', 'subject', 'body'],
+    label: (row) => toLabel(row.key),
   },
 };

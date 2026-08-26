@@ -19,6 +19,8 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { SearchModule } from './search/search.module';
 import { AuditLogsModule } from './audit-logs/audit-logs.module';
 import { ActorContextMiddleware } from './audit-logs/actor-context.middleware';
+import { TaxRatesModule } from './tax-rates/tax-rates.module';
+import { EmailTemplatesModule } from './email-templates/email-templates.module';
 
 @Module({
   imports: [
@@ -38,6 +40,8 @@ import { ActorContextMiddleware } from './audit-logs/actor-context.middleware';
     NotificationsModule,
     SearchModule,
     AuditLogsModule,
+    TaxRatesModule,
+    EmailTemplatesModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -146,18 +146,30 @@ model Organization {
   email     String?
   website   String?
   gstNumber String?
+
+  // Branding (Phase 17, P1 scope) — deliberately just these four display
+  // fields. Logo/favicon are file-upload features requiring a storage
+  // decision not made yet; see branding-settings.tsx's honest "not
+  // available yet" state instead of a fake uploader.
+  primaryColor        String?
+  secondaryColor      String?
+  quotationHeaderText String?
+  quotationFooterText String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users         User[]
-  clients       Client[]
-  enquiries     Enquiry[]
-  products      Product[]
-  productGroups ProductGroup[]
-  quotations    Quotation[]
-  followUps     FollowUp[]
-  tasks         Task[]
-  auditLogs     AuditLog[]
+  users          User[]
+  clients        Client[]
+  enquiries      Enquiry[]
+  products       Product[]
+  productGroups  ProductGroup[]
+  quotations     Quotation[]
+  followUps      FollowUp[]
+  tasks          Task[]
+  auditLogs      AuditLog[]
+  taxRates       TaxRate[]
+  emailTemplates EmailTemplate[]
 
   @@map("organization")
 }
@@ -723,6 +735,72 @@ enum AuditAction {
   // No current call sites/endpoint delete anything in an audited module —
   // kept for future-proofing only (see decision log for Phase 16).
   DELETE
+}
+
+// An organization-defined tax rate (e.g. "CGST" 9%, "SGST" 9%, "IGST" 18%) —
+// Phase 17 Settings. Deliberately independent of QuotationLineItem.taxRate,
+// which remains the sole authoritative value for both historical and new
+// quotations (a caller-supplied Decimal, persisted at write time — see its
+// own comment in Quotation below). A TaxRate row only ever supplies a
+// CREATE-FORM default for a new quotation line in the frontend; nothing
+// here is read by QuotationsService, so changing or deactivating a rate
+// can never retroactively affect an existing quotation.
+model TaxRate {
+  id String @id @default(cuid())
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  name String
+  rate Decimal @db.Decimal(5, 2)
+  // At most one ACTIVE default per organization — enforced at the service
+  // layer (TaxRatesService.setAsDefault), never by a partial unique index,
+  // since Postgres partial-unique-on-boolean isn't expressible directly in
+  // the Prisma schema here and the invariant also depends on `status`.
+  isDefault Boolean       @default(false)
+  status    TaxRateStatus @default(ACTIVE)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, name])
+  @@index([organizationId, status])
+  @@map("tax_rate")
+}
+
+enum TaxRateStatus {
+  ACTIVE
+  INACTIVE
+}
+
+// A stored, editable email template — Phase 17 Settings, storage/management
+// only. There is deliberately no delivery mechanism behind this yet (no
+// SMTP/provider configured anywhere in the backend) — see
+// email-templates.tsx's explicit "not configured yet" messaging. `key` is a
+// closed enum, not a validated string like AuditLog.entityType, because the
+// set of trigger points is small and fixed today, unlike audit's
+// deliberately open-ended entity list.
+model EmailTemplate {
+  id String @id @default(cuid())
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  key     EmailTemplateKey
+  subject String
+  body    String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, key])
+  @@map("email_template")
+}
+
+enum EmailTemplateKey {
+  QUOTATION_SENT
+  WELCOME
+  FOLLOW_UP_REMINDER
 }
 
 enum FollowUpType {

@@ -20,6 +20,7 @@ import { listClients } from '@/features/clients/api';
 import { listEnquiries } from '@/features/enquiries/api';
 import { listProducts } from '@/features/products/api';
 import { listUsers } from '@/features/users/api';
+import { getDefaultTaxRate } from '@/features/tax-rates/api';
 import {
   createQuotation,
   getQuotation,
@@ -72,7 +73,15 @@ function nextKey() {
   return `line-${keyCounter}`;
 }
 
-function emptyLine(): BuilderLineItem {
+/**
+ * `taxRate` prefills from the organization's active default Tax Rate (see
+ * Tax Settings) when one is known — a CREATE-FORM convenience only. It is
+ * never re-applied to a line already loaded from a saved quotation (see the
+ * edit-load effect below, which never calls this for existing lines), so
+ * changing or deactivating the org default can never alter a persisted
+ * quotation's stored taxRate.
+ */
+function emptyLine(defaultTaxRate = 0): BuilderLineItem {
   return {
     key: nextKey(),
     originalProductId: null,
@@ -82,7 +91,7 @@ function emptyLine(): BuilderLineItem {
     description: '',
     quantity: 1,
     discountPercentage: 0,
-    taxRate: 0,
+    taxRate: defaultTaxRate,
   };
 }
 
@@ -123,6 +132,7 @@ export function QuotationBuilder() {
   const [items, setItems] = useState<BuilderLineItem[]>([emptyLine()]);
   const [quotationNumber, setQuotationNumber] = useState<string | null>(null);
   const [createdAt, setCreatedAt] = useState<string | null>(null);
+  const [defaultTaxRate, setDefaultTaxRate] = useState(0);
 
   const [clients, setClients] = useState<SelectOption[]>([]);
   const [enquiries, setEnquiries] = useState<{ id: string; title: string; clientId: string }[]>([]);
@@ -178,6 +188,34 @@ export function QuotationBuilder() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Loads the organization's active default Tax Rate, if any, purely to
+  // prefill new blank lines going forward (see emptyLine's doc comment).
+  // Silently ignored on failure — the builder still works with a manually
+  // entered rate, same as before this existed.
+  useEffect(() => {
+    let cancelled = false;
+    getDefaultTaxRate()
+      .then((rate) => {
+        if (cancelled || !rate) return;
+        setDefaultTaxRate(rate.rate);
+        // Only backfills the pristine initial blank line (create mode,
+        // never touched yet) — never a line loaded from a saved quotation,
+        // and never a line the user has already started filling in.
+        setItems((current) =>
+          !isEdit && current.length === 1 && current[0].taxRate === 0 && !current[0].productId && !current[0].description
+            ? [{ ...current[0], taxRate: rate.rate }]
+            : current,
+        );
+      })
+      .catch(() => {
+        // Silent — see above.
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Editing: load the real, persisted quotation and prefill every field
   // from it — never from the list row that was clicked.
   useEffect(() => {
@@ -210,7 +248,7 @@ export function QuotationBuilder() {
                 discountPercentage: line.discountPercentage,
                 taxRate: line.taxRate,
               }))
-            : [emptyLine()],
+            : [emptyLine(defaultTaxRate)],
         );
         setLoadError('');
       } catch (error) {
@@ -260,7 +298,7 @@ export function QuotationBuilder() {
     );
   };
 
-  const addItem = () => setItems((current) => [...current, emptyLine()]);
+  const addItem = () => setItems((current) => [...current, emptyLine(defaultTaxRate)]);
   const removeItem = (key: string) => setItems((current) => current.filter((line) => line.key !== key));
 
   const subtotal = items.reduce((sum, line) => sum + line.quantity * line.unitPrice, 0);

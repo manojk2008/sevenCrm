@@ -15,6 +15,10 @@ export interface BackendOrganization {
   email: string | null;
   website: string | null;
   gstNumber: string | null;
+  primaryColor: string | null;
+  secondaryColor: string | null;
+  quotationHeaderText: string | null;
+  quotationFooterText: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -26,6 +30,10 @@ export interface UpdateMyOrganizationPayload {
   email?: string;
   website?: string;
   gstNumber?: string;
+  primaryColor?: string;
+  secondaryColor?: string;
+  quotationHeaderText?: string;
+  quotationFooterText?: string;
 }
 
 export async function getMyOrganization(): Promise<BackendOrganization> {
