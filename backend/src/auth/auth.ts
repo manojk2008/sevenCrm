@@ -28,11 +28,18 @@ export const prisma = withAuditLogging(new PrismaClient({ adapter }));
 export const auth = betterAuth({
   secret: requireEnv('BETTER_AUTH_SECRET'),
   baseURL: requireEnv('BETTER_AUTH_URL'),
-  // Separate from NestJS's own CORS config (main.ts): this is Better
-  // Auth's own origin-trust check, which otherwise rejects every
-  // browser-initiated request from the Next.js frontend with 403
-  // INVALID_ORIGIN, regardless of CORS.
-  trustedOrigins: ['http://localhost:3000', 'https://sevencrm.onrender.com'],
+
+  trustedOrigins: [
+    'http://localhost:3000',
+    'https://sevencrm.onrender.com',
+  ],
+
+  advanced: {
+    defaultCookieAttributes: {
+      sameSite: 'none',
+      secure: true,
+    },
+  },
   database: prismaAdapter(prisma, {
     provider: 'postgresql',
   }),
