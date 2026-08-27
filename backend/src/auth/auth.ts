@@ -32,7 +32,7 @@ export const auth = betterAuth({
   // Auth's own origin-trust check, which otherwise rejects every
   // browser-initiated request from the Next.js frontend with 403
   // INVALID_ORIGIN, regardless of CORS.
-  trustedOrigins: ['http://localhost:3000'],
+  trustedOrigins: ['http://localhost:3000', 'https://sevencrm.onrender.com'],
   database: prismaAdapter(prisma, {
     provider: 'postgresql',
   }),
