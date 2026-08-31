@@ -23,9 +23,14 @@ export class UpdateClientDto {
   @MaxLength(300)
   website?: string;
 
+  // undefined (key absent) leaves the existing email untouched; null
+  // explicitly clears it; a string is validated and, if valid, replaces it
+  // — same three-way convention as assignedToId below. @IsOptional() skips
+  // @IsEmail() for both undefined and null, so an explicit null is never
+  // rejected as an invalid email.
   @IsOptional()
   @IsEmail()
-  email?: string;
+  email?: string | null;
 
   @IsOptional()
   @IsString()

@@ -190,7 +190,12 @@ model Client {
   companyName String
   industry    String
   website     String?
-  email       String
+  // Optional: a client may have no known email yet. The organization-scoped
+  // unique index below still works correctly with this — Postgres treats
+  // every NULL as distinct, so any number of clients per organization can
+  // have no email, while two clients sharing an actual email address are
+  // still rejected.
+  email       String?
   phone       String
   gstNumber   String?
   status      ClientStatus @default(ACTIVE)

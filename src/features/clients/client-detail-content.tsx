@@ -226,9 +226,15 @@ export function ClientDetailContent({ params }: { params: Promise<{ id: string }
           <Button variant="outline" onClick={() => setIsEditOpen(true)}>
             <Edit className="mr-2 h-4 w-4" /> Edit
           </Button>
-          <Button className="bg-primary hover:bg-primary/90" render={<a href={`mailto:${client.email}`} />}>
-            <Send className="mr-2 h-4 w-4" /> Email
-          </Button>
+          {client.email ? (
+            <Button className="bg-primary hover:bg-primary/90" render={<a href={`mailto:${client.email}`} />}>
+              <Send className="mr-2 h-4 w-4" /> Email
+            </Button>
+          ) : (
+            <Button className="bg-primary hover:bg-primary/90" disabled title="No email on file for this client">
+              <Send className="mr-2 h-4 w-4" /> Email
+            </Button>
+          )}
           <DropdownMenu>
             <DropdownMenuTrigger
               render={
@@ -297,7 +303,7 @@ export function ClientDetailContent({ params }: { params: Promise<{ id: string }
                 <CardContent className="space-y-4">
                   <div className="grid grid-cols-3 gap-2">
                     <div className="text-sm font-medium text-muted-foreground">Email</div>
-                    <div className="col-span-2 text-sm text-foreground">{client.email}</div>
+                    <div className="col-span-2 text-sm text-foreground">{client.email || 'Not provided'}</div>
                   </div>
                   <div className="grid grid-cols-3 gap-2">
                     <div className="text-sm font-medium text-muted-foreground">Phone</div>

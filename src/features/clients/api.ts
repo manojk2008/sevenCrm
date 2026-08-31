@@ -27,7 +27,7 @@ export interface BackendClient {
   companyName: string;
   industry: string;
   website: string | null;
-  email: string;
+  email: string | null;
   phone: string;
   gstNumber: string | null;
   status: BackendClientStatus;
@@ -164,7 +164,14 @@ interface ClientCorePayload {
   companyName: string;
   industry: string;
   website?: string;
-  email: string;
+  /**
+   * Absent (omitted from the JSON body — `JSON.stringify` drops `undefined`
+   * values) on create, so a blank email is simply not sent rather than sent
+   * as "". Explicit `null` on update, so a blank email actively clears an
+   * existing one. Never "" either way — the backend stores NULL, not an
+   * empty string.
+   */
+  email?: string | null;
   phone: string;
   gstNumber?: string;
   tags?: string[];
@@ -180,13 +187,16 @@ interface ClientCorePayload {
 // The form has no dedicated company-email input (see client-form.tsx) — the
 // primary contact's email is the only email the user actually enters, so it
 // is used for both the contact record and the client's own `email` field.
-function toCorePayload(values: ClientFormValues): ClientCorePayload {
+// `isEdit` decides what a blank value means: on create it's "not provided"
+// (omit the key), on edit it's "clear the existing one" (send null).
+function toCorePayload(values: ClientFormValues, isEdit: boolean): ClientCorePayload {
+  const email = values.primaryContact.email.trim();
   return {
     companyName: values.name,
     industry: values.industry,
     // No `website` input exists in the form (see client-form.tsx) — omitted
     // entirely rather than sent as undefined, so PATCH never touches it.
-    email: values.primaryContact.email,
+    email: email || (isEdit ? null : undefined),
     phone: values.phone,
     gstNumber: values.gstNumber || undefined,
     tags: values.tags,
@@ -203,14 +213,14 @@ function toCorePayload(values: ClientFormValues): ClientCorePayload {
 async function createClientRaw(values: ClientFormValues): Promise<BackendClient> {
   return apiFetch<BackendClient>("/clients", {
     method: "POST",
-    body: JSON.stringify(toCorePayload(values)),
+    body: JSON.stringify(toCorePayload(values, false)),
   });
 }
 
 async function updateClientCoreRaw(id: string, values: ClientFormValues): Promise<BackendClient> {
   return apiFetch<BackendClient>(`/clients/${id}`, {
     method: "PATCH",
-    body: JSON.stringify(toCorePayload(values)),
+    body: JSON.stringify(toCorePayload(values, true)),
   });
 }
 

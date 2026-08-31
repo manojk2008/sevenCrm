@@ -44,7 +44,7 @@ export interface SafeClient {
   companyName: string;
   industry: string;
   website: string | null;
-  email: string;
+  email: string | null;
   phone: string;
   gstNumber: string | null;
   status: ClientStatus;
@@ -107,7 +107,10 @@ export class ClientsService {
           companyName: dto.companyName,
           industry: dto.industry,
           website: dto.website,
-          email: dto.email.toLowerCase(),
+          // Optional: omitted (or blank) means "no email yet" — stored as
+          // NULL, never an empty string (see the schema's unique index
+          // comment for why that distinction matters).
+          email: dto.email ? dto.email.toLowerCase() : null,
           phone: dto.phone,
           gstNumber: dto.gstNumber,
           tags: dto.tags ?? [],
@@ -205,7 +208,9 @@ export class ClientsService {
           ...(dto.companyName !== undefined ? { companyName: dto.companyName } : {}),
           ...(dto.industry !== undefined ? { industry: dto.industry } : {}),
           ...(dto.website !== undefined ? { website: dto.website } : {}),
-          ...(dto.email !== undefined ? { email: dto.email.toLowerCase() } : {}),
+          // undefined -> untouched; null -> cleared to NULL; a string ->
+          // normalized and set. Never stored as "".
+          ...(dto.email !== undefined ? { email: dto.email ? dto.email.toLowerCase() : null } : {}),
           ...(dto.phone !== undefined ? { phone: dto.phone } : {}),
           ...(dto.gstNumber !== undefined ? { gstNumber: dto.gstNumber } : {}),
           ...(dto.tags !== undefined ? { tags: dto.tags } : {}),

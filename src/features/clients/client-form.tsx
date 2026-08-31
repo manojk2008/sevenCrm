@@ -32,7 +32,7 @@ export interface ClientRecord {
   name: string;
   contactperson: string;
   industry: string;
-  email: string;
+  email: string | null;
   phone: string;
   website?: string;
   gstNumber?: string;
@@ -84,8 +84,10 @@ const clientSchema = z.object({
     phone: z.string().min(1, "Primary contact phone is required"),
     // This is also used as the client's own company email (see
     // src/features/clients/api.ts's toCorePayload) — the form has no
-    // separate company-email input, so it must be a real, valid address.
-    email: z.string().min(1, "Email is required").email("Enter a valid email"),
+    // separate company-email input. Optional: empty is allowed (the backend
+    // stores NULL, not ""), but a non-empty value must still be a real
+    // address.
+    email: z.union([z.literal(""), z.string().email("Enter a valid email")]),
     designation: z.string().optional(),
   }),
   address: z.object({
@@ -280,7 +282,7 @@ export function ClientForm({ open, onOpenChange, client, onSubmit }: ClientFormP
                 <Field id="primary-contact-phone" label="Phone" required error={errors.primaryContact?.phone?.message}>
                   <Input id="primary-contact-phone" {...register("primaryContact.phone")} className={errors.primaryContact?.phone ? "border-destructive" : ""} />
                 </Field>
-                <Field id="primary-contact-email" label="Email" required error={errors.primaryContact?.email?.message}>
+                <Field id="primary-contact-email" label="Email" error={errors.primaryContact?.email?.message}>
                   <Input id="primary-contact-email" type="email" {...register("primaryContact.email")} className={errors.primaryContact?.email ? "border-destructive" : ""} />
                 </Field>
               </div>

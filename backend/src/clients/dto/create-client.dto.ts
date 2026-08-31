@@ -20,9 +20,13 @@ export class CreateClientDto {
   @MaxLength(300)
   website?: string;
 
+  // Genuinely optional: the TS type now matches the decorator (previously
+  // `email!: string` claimed always-present despite @IsOptional(), which is
+  // what let the service's dto.email.toLowerCase() crash on an omitted
+  // value — see ClientsService.create).
   @IsOptional()
   @IsEmail()
-  email!: string;
+  email?: string;
 
   @IsString()
   @MinLength(1)
