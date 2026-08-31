@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Plus, LayoutGrid, Table as TableIcon, Filter, Search, TrendingUp } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -64,8 +64,15 @@ const PRIORITY_OPTIONS: { value: Priority; label: string }[] = [
 const TABLE_PAGE_SIZE = 10;
 const KANBAN_PAGE_SIZE = 100;
 
+const ENQUIRY_STAGE_VALUES = new Set(ENQUIRY_STAGES.map((s) => s.key));
+
+function isEnquiryStage(value: string | null): value is EnquiryStage {
+  return value !== null && ENQUIRY_STAGE_VALUES.has(value as EnquiryStage);
+}
+
 export function EnquiriesContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const logout = useAuthStore((state) => state.logout);
   const currentUser = useAuthStore((state) => state.user);
 
@@ -88,7 +95,14 @@ export function EnquiriesContent() {
 
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
-  const [stageFilter, setStageFilter] = useState<EnquiryStage | undefined>(undefined);
+  // Seeded from `?stage=` when present and valid (e.g. the Dashboard's "Won
+  // Enquiries" KPI card links to `/enquiries?stage=won`) — falls back to the
+  // existing unfiltered default otherwise. Read once via a lazy initializer;
+  // the existing Filter dropdown is the only way to change it afterward.
+  const [stageFilter, setStageFilter] = useState<EnquiryStage | undefined>(() => {
+    const param = searchParams.get("stage");
+    return isEnquiryStage(param) ? param : undefined;
+  });
   const [priorityFilter, setPriorityFilter] = useState<Priority | undefined>(undefined);
   const [subFilter, setSubFilter] = useState<SubFilter>("all");
 

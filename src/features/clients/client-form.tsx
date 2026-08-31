@@ -97,6 +97,11 @@ const clientSchema = z.object({
     country: z.string().default("India"),
   }),
   notes: z.string().optional(),
+  // Create-only UX flag — never sent to the backend (toCorePayload in
+  // ./api.ts whitelists specific fields only, so this can never leak into
+  // the POST /clients payload). Read by the parent's onSubmit to decide
+  // whether to open the Enquiry form after a successful create.
+  addEnquiryAfterCreate: z.boolean().default(false),
 }).refine(data => {
   if (data.status === "inactive" && (!data.churnReason || data.churnReason.trim() === "")) {
     return false;
@@ -130,6 +135,7 @@ const emptyClient: ClientFormInput = {
   primaryContact: { name: "", phone: "", email: "", designation: "" },
   address: { line1: "", line2: "", city: "", state: "", pincode: "", country: "India" },
   notes: "",
+  addEnquiryAfterCreate: false,
 };
 
 export function ClientForm({ open, onOpenChange, client, onSubmit }: ClientFormProps) {
@@ -142,6 +148,7 @@ export function ClientForm({ open, onOpenChange, client, onSubmit }: ClientFormP
   const gstNumber = watch("gstNumber");
   const industry = watch("industry");
   const name = watch("name");
+  const addEnquiryAfterCreate = watch("addEnquiryAfterCreate");
 
   useEffect(() => {
     if (open) {
@@ -318,6 +325,24 @@ export function ClientForm({ open, onOpenChange, client, onSubmit }: ClientFormP
                 </Field>
               )}
             </section>
+
+            {!client && (
+              <section className="border-t pt-6">
+                <div className="flex items-center justify-between rounded-xl border p-4 bg-muted/20">
+                  <div>
+                    <Label htmlFor="client-add-enquiry">Add enquiry after creating client</Label>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Continue straight into the Enquiry form for this client once saved.
+                    </p>
+                  </div>
+                  <Switch
+                    id="client-add-enquiry"
+                    checked={addEnquiryAfterCreate === true}
+                    onCheckedChange={(checked) => setValue("addEnquiryAfterCreate", checked)}
+                  />
+                </div>
+              </section>
+            )}
           </form>
         </div>
         <DialogFooter className="p-6 pt-4 shrink-0 border-t bg-background">

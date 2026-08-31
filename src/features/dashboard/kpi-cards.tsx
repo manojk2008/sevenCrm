@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { motion, useReducedMotion, type Variants } from "framer-motion";
 import { Card, CardContent } from "@/components/ui/card";
 import { StatCardSkeleton } from "@/components/shared/skeleton-loader";
@@ -108,6 +109,7 @@ export function KpiCards() {
       icon: Building2,
       color: "text-primary",
       bgColor: "bg-primary/10",
+      href: "/clients?status=all",
     },
     {
       title: "Total Products",
@@ -115,6 +117,7 @@ export function KpiCards() {
       icon: Package,
       color: "text-secondary",
       bgColor: "bg-secondary/10",
+      href: "/products?status=all",
     },
     {
       title: "Open Enquiries",
@@ -122,6 +125,7 @@ export function KpiCards() {
       icon: TrendingUp,
       color: "text-warning",
       bgColor: "bg-warning/10",
+      href: "/enquiries",
     },
     {
       title: "Won Enquiries (This Month)",
@@ -129,6 +133,7 @@ export function KpiCards() {
       icon: Trophy,
       color: "text-success",
       bgColor: "bg-success/10",
+      href: "/enquiries?stage=won",
     },
     {
       title: "Net Revenue (This Month)",
@@ -136,6 +141,7 @@ export function KpiCards() {
       icon: IndianRupee,
       color: "text-primary",
       bgColor: "bg-primary/10",
+      href: "/analytics",
     },
     {
       title: "Enquiry Win Rate (This Month)",
@@ -143,6 +149,7 @@ export function KpiCards() {
       icon: Target,
       color: "text-info",
       bgColor: "bg-info/10",
+      href: "/analytics",
     },
   ];
 
@@ -155,21 +162,23 @@ export function KpiCards() {
     >
       {kpiData.map((kpi, idx) => (
         <motion.div key={idx} variants={item}>
-          <Card className="hover:shadow-md transition-shadow border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden group">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div className="space-y-2">
-                  <p className="text-sm font-medium text-muted-foreground">{kpi.title}</p>
-                  <div className="flex items-baseline space-x-2">
-                    <h3 className="text-2xl font-bold tracking-tight">{kpi.value}</h3>
+          <Link href={kpi.href} className="block">
+            <Card className="hover:shadow-md transition-shadow border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden group">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium text-muted-foreground">{kpi.title}</p>
+                    <div className="flex items-baseline space-x-2">
+                      <h3 className="text-2xl font-bold tracking-tight">{kpi.value}</h3>
+                    </div>
+                  </div>
+                  <div className={cn("p-3 rounded-full transition-transform group-hover:scale-110", kpi.bgColor)}>
+                    <kpi.icon className={cn("w-6 h-6", kpi.color)} />
                   </div>
                 </div>
-                <div className={cn("p-3 rounded-full transition-transform group-hover:scale-110", kpi.bgColor)}>
-                  <kpi.icon className={cn("w-6 h-6", kpi.color)} />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          </Link>
         </motion.div>
       ))}
     </motion.div>

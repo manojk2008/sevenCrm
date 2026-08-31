@@ -37,6 +37,13 @@ interface EnquiryFormProps {
   /** Present when editing; absent when creating. */
   enquiry?: Enquiry;
   onSubmit: (values: EnquiryFormValues) => Promise<void>;
+  /**
+   * Pre-selects the client when creating (e.g. opened right after that
+   * client was created from the Client form). Ignored when editing — the
+   * client field stays fully editable either way, this only seeds its
+   * starting value.
+   */
+  initialClientId?: string;
 }
 
 /** `<input type="date">` needs `YYYY-MM-DD`; the API returns full ISO. */
@@ -46,14 +53,14 @@ function toDateInputValue(iso: string | undefined): string {
   return Number.isNaN(date.getTime()) ? "" : date.toISOString().slice(0, 10);
 }
 
-export function EnquiryForm({ open, onOpenChange, enquiry, onSubmit }: EnquiryFormProps) {
+export function EnquiryForm({ open, onOpenChange, enquiry, onSubmit, initialClientId }: EnquiryFormProps) {
   const isEdit = !!enquiry;
 
   // The parent renders this component only while the dialog is open, so it
   // remounts on every open — prefilling from props here is enough, and avoids
   // a reset effect that would re-render on mount.
   const [title, setTitle] = useState(enquiry?.title ?? "");
-  const [clientId, setClientId] = useState(enquiry?.clientId ?? "");
+  const [clientId, setClientId] = useState(enquiry?.clientId ?? initialClientId ?? "");
   const [expectedRevenue, setExpectedRevenue] = useState(
     enquiry ? String(enquiry.expectedRevenue) : "",
   );

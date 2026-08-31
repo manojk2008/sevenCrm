@@ -66,6 +66,12 @@ interface ProductFormProps {
   canManageGroups: boolean;
   /** Opens the Manage Groups dialog (closes this form first). */
   onManageGroups: () => void;
+  /**
+   * Pre-selects the product group when creating (e.g. opened from the
+   * Enquiry form's already-chosen group). Ignored when editing an existing
+   * product, which always starts from its own current group.
+   */
+  defaultProductGroupId?: string;
 }
 
 type GroupsState = "loading" | "error" | "ready";
@@ -84,6 +90,7 @@ export function ProductForm({
   onSubmit,
   canManageGroups,
   onManageGroups,
+  defaultProductGroupId,
 }: ProductFormProps) {
   const {
     register,
@@ -146,10 +153,10 @@ export function ProductForm({
             sku: product.sku,
             unit: product.unit,
           }
-        : emptyProduct,
+        : { ...emptyProduct, productGroupId: defaultProductGroupId ?? "" },
     );
     void loadGroups();
-  }, [open, product, reset, loadGroups]);
+  }, [open, product, reset, loadGroups, defaultProductGroupId]);
 
   const hasNoAssignableGroups =
     groupsState === "ready" && groups.filter((group) => !group.inactive).length === 0;

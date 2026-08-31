@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Download,
@@ -65,6 +65,8 @@ import { TableSkeleton } from '@/components/shared/skeleton-loader';
 import { ClientForm } from './client-form';
 import type { ClientRecord, ClientFormValues } from './client-form';
 import { listClients, saveClientForm, updateClientStatus, getClientErrorMessage } from './api';
+import { EnquiryForm } from '@/features/enquiries/enquiry-form';
+import { createEnquiry, type EnquiryFormValues } from '@/features/enquiries/api';
 import { ApiError } from '@/lib/api';
 import { useAuthStore } from '@/stores/auth-store';
 import { toast } from 'sonner';
@@ -75,8 +77,15 @@ type LoadState = 'loading' | 'error' | 'ready';
 
 const PAGE_SIZE = 10;
 
+const STATUS_FILTER_VALUES: StatusFilter[] = ['all', 'active', 'inactive'];
+
+function isStatusFilter(value: string | null): value is StatusFilter {
+  return STATUS_FILTER_VALUES.includes(value as StatusFilter);
+}
+
 export function ClientsContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const logout = useAuthStore((state) => state.logout);
 
   const [clients, setClients] = useState<ClientRecord[]>([]);
@@ -88,7 +97,15 @@ export function ClientsContent() {
 
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('active');
+  // Seeded from `?status=` when present and valid (e.g. the Dashboard's
+  // "Total Clients" KPI card links to `/clients?status=all`) — falls back to
+  // the existing default otherwise. Read once via a lazy initializer, same
+  // as every other piece of state here; the existing Select UI is the only
+  // way to change it afterward.
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>(() => {
+    const param = searchParams.get('status');
+    return isStatusFilter(param) ? param : 'active';
+  });
 
   const [view, setView] = useState<'table' | 'grid'>('table');
   const [rowSelection, setRowSelection] = useState({});
@@ -97,6 +114,12 @@ export function ClientsContent() {
   const [clientToDeactivate, setClientToDeactivate] = useState<ClientRecord | null>(null);
   const [churnReasonInput, setChurnReasonInput] = useState('');
   const [isDeactivating, setIsDeactivating] = useState(false);
+
+  // Set right after a new client is created with "Add enquiry after
+  // creating client" checked — opens the existing EnquiryForm pre-filled
+  // with that client, so the user never has to search for it again.
+  const [enquiryPrefillClient, setEnquiryPrefillClient] = useState<ClientRecord | null>(null);
+  const [isEnquiryFormOpen, setIsEnquiryFormOpen] = useState(false);
 
   // A 401 means the session is gone — the backend is authoritative, so we
   // clear local state and send the user back to login rather than leaving a
@@ -291,7 +314,24 @@ export function ClientsContent() {
   const selectedRows = table.getFilteredSelectedRowModel().rows;
 
   const handleFormSubmit = async (values: ClientFormValues) => {
-    await saveClientForm(values, editingClient, (message) => toast.warning(message));
+    const isCreating = !editingClient;
+    const saved = await saveClientForm(values, editingClient, (message) => toast.warning(message));
+    // Triggered before the list refresh below: the client is already
+    // genuinely saved at this point (saveClientForm returned), so a
+    // subsequent refresh hiccup must not block the promised hand-off into
+    // the Enquiry form.
+    if (isCreating && values.addEnquiryAfterCreate) {
+      setEnquiryPrefillClient(saved);
+      setIsEnquiryFormOpen(true);
+    }
+    await loadClients();
+  };
+
+  const handleEnquirySubmit = async (values: EnquiryFormValues) => {
+    await createEnquiry(values);
+    toast.success('Enquiry created');
+    setIsEnquiryFormOpen(false);
+    setEnquiryPrefillClient(null);
     await loadClients();
   };
 
@@ -602,6 +642,21 @@ export function ClientsContent() {
         client={editingClient}
         onSubmit={handleFormSubmit}
       />
+
+      {/* Opened right after a new client is created with "Add enquiry after
+          creating client" checked — same EnquiryForm used on the Enquiries
+          page, just pre-selecting the client that was just created. */}
+      {isEnquiryFormOpen && enquiryPrefillClient && (
+        <EnquiryForm
+          open={isEnquiryFormOpen}
+          onOpenChange={(open) => {
+            setIsEnquiryFormOpen(open);
+            if (!open) setEnquiryPrefillClient(null);
+          }}
+          initialClientId={enquiryPrefillClient.id}
+          onSubmit={handleEnquirySubmit}
+        />
+      )}
 
       {/* Deactivate Confirmation */}
       <AlertDialog open={!!clientToDeactivate} onOpenChange={(open) => !open && !isDeactivating && setClientToDeactivate(null)}>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 import {
@@ -72,8 +72,15 @@ type LoadState = "loading" | "error" | "ready";
 const PAGE_SIZE = 10;
 const ALL_GROUPS = "all";
 
+const STATUS_FILTER_VALUES: StatusFilter[] = ["all", "active", "inactive"];
+
+function isStatusFilter(value: string | null): value is StatusFilter {
+  return STATUS_FILTER_VALUES.includes(value as StatusFilter);
+}
+
 export function ProductsContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const logout = useAuthStore((state) => state.logout);
   const currentUser = useAuthStore((state) => state.user);
   // UX gating only — the backend (SUPER_ADMIN/ADMIN on every write) remains
@@ -92,7 +99,14 @@ export function ProductsContent() {
 
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("active");
+  // Seeded from `?status=` when present and valid (e.g. the Dashboard's
+  // "Total Products" KPI card links to `/products?status=all`) — falls back
+  // to the existing default otherwise. Read once via a lazy initializer; the
+  // existing Select UI is the only way to change it afterward.
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>(() => {
+    const param = searchParams.get("status");
+    return isStatusFilter(param) ? param : "active";
+  });
   const [groupFilter, setGroupFilter] = useState<string>(ALL_GROUPS);
 
   const [view, setView] = useState<"table" | "grid">("table");
