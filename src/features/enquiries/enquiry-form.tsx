@@ -336,7 +336,7 @@ export function EnquiryForm({ open, onOpenChange, enquiry, onSubmit }: EnquiryFo
         <DialogFooter className="sticky bottom-0 border-t bg-background py-4">
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving}>Cancel</Button>
           <Button onClick={handleSave} disabled={!canSubmit}>
-            {isSaving ? "Saving…" : "Save enquiry"}
+            {isSaving ? "Saving…" : isEdit ? "Save changes" : "Save enquiry"}
           </Button>
         </DialogFooter>
       </DialogContent>

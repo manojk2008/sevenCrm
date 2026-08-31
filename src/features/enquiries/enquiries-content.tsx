@@ -74,6 +74,10 @@ export function EnquiriesContent() {
   const [editingEnquiry, setEditingEnquiry] = useState<Enquiry | undefined>(undefined);
   const [selectedEnquiry, setSelectedEnquiry] = useState<Enquiry | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
+  // Set while a click on an enquiry card/row is fetching the full record —
+  // the detail dialog only opens once that finishes, so it never shows a
+  // stale/partial list snapshot for even a moment.
+  const [loadingEnquiryId, setLoadingEnquiryId] = useState<string | null>(null);
 
   const [enquiries, setEnquiries] = useState<Enquiry[]>([]);
   const [loadState, setLoadState] = useState<LoadState>("loading");
@@ -166,15 +170,20 @@ export function EnquiriesContent() {
     [handleUnauthorized],
   );
 
-  // The list only carries what the card/row needs; the sheet refetches the
-  // record so it always shows current server state rather than list state.
+  // The list only carries what the card/row needs; the detail dialog needs
+  // the full record (e.g. products/description), so it fetches it and only
+  // opens once that finishes rather than opening with a stale snapshot.
   const handleEnquiryClick = async (enquiry: Enquiry) => {
-    setSelectedEnquiry(enquiry);
-    setIsDetailOpen(true);
+    if (loadingEnquiryId) return;
+    setLoadingEnquiryId(enquiry.id);
     try {
-      setSelectedEnquiry(await getEnquiry(enquiry.id));
+      const full = await getEnquiry(enquiry.id);
+      setSelectedEnquiry(full);
+      setIsDetailOpen(true);
     } catch (error) {
       handleApiError(error, "Couldn't load that enquiry.");
+    } finally {
+      setLoadingEnquiryId(null);
     }
   };
 
@@ -205,7 +214,7 @@ export function EnquiriesContent() {
       try {
         const updated = await updateEnquiryStage(id, newStage);
         setEnquiries((prev) => prev.map((e) => (e.id === id ? updated : e)));
-        if (selectedEnquiry?.id === id) setSelectedEnquiry(updated);
+        setSelectedEnquiry((prev) => (prev?.id === id ? updated : prev));
       } catch (error) {
         setEnquiries((prev) =>
           prev.map((e) => (e.id === id ? { ...e, stage: previousStage } : e)),
@@ -213,7 +222,7 @@ export function EnquiriesContent() {
         handleApiError(error, "Couldn't move that enquiry.");
       }
     },
-    [handleApiError, selectedEnquiry],
+    [handleApiError],
   );
 
   const handleStageChange = useCallback(
@@ -245,7 +254,7 @@ export function EnquiriesContent() {
     try {
       const updated = await updateEnquiryStage(pendingLost.id, "lost", lostReasonInput.trim());
       setEnquiries((prev) => prev.map((e) => (e.id === updated.id ? updated : e)));
-      if (selectedEnquiry?.id === updated.id) setSelectedEnquiry(updated);
+      setSelectedEnquiry((prev) => (prev?.id === updated.id ? updated : prev));
       setPendingLost(null);
       setLostReasonInput("");
     } catch (error) {
