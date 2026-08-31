@@ -243,6 +243,20 @@ export function EnquiryForm({ open, onOpenChange, enquiry, onSubmit, initialClie
           </section>
 
           <section className="space-y-4 border-t pt-6">
+            <h3 className="text-sm font-semibold">Products</h3>
+            <div className="space-y-2">
+              <Label>Products enquired about</Label>
+              <EnquiryProductSelect
+                value={productIds}
+                onChange={setProductIds}
+                attached={enquiry?.products}
+                disabled={isSaving}
+              />
+            </div>
+          </section>
+
+
+          <section className="space-y-4 border-t pt-6">
             <h3 className="text-sm font-semibold">Classification</h3>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
               <div className="space-y-2">
@@ -300,19 +314,6 @@ export function EnquiryForm({ open, onOpenChange, enquiry, onSubmit, initialClie
                   disabled={isSaving}
                 />
               </div>
-            </div>
-          </section>
-
-          <section className="space-y-4 border-t pt-6">
-            <h3 className="text-sm font-semibold">Products</h3>
-            <div className="space-y-2">
-              <Label>Products enquired about</Label>
-              <EnquiryProductSelect
-                value={productIds}
-                onChange={setProductIds}
-                attached={enquiry?.products}
-                disabled={isSaving}
-              />
             </div>
           </section>
 
