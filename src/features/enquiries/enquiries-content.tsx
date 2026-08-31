@@ -524,6 +524,10 @@ export function EnquiriesContent() {
           setEditingEnquiry(enquiry);
           setIsFormOpen(true);
         }}
+        onStageChange={(stage) => {
+          if (!selectedEnquiry) return;
+          handleStageChange(selectedEnquiry.id, stage, selectedEnquiry.stage);
+        }}
       />
 
       {isFormOpen && (

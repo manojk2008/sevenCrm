@@ -2,11 +2,19 @@
 
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Enquiry, ENQUIRY_STAGES } from "@/types/enquiry";
+import type { EnquiryStage } from "@/types/enquiry";
 import { formatCurrency } from "@/lib/utils";
 import { format } from "date-fns";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Check, Calendar, User, Building, MapPin, DollarSign, Target, Activity, Package } from "lucide-react";
 
 interface EnquiryDetailProps {
@@ -14,9 +22,11 @@ interface EnquiryDetailProps {
   onOpenChange: (open: boolean) => void;
   enquiry: Enquiry | null;
   onEdit?: (enquiry: Enquiry) => void;
+  /** Moves the enquiry to a new stage; the parent owns the LOST-reason flow. */
+  onStageChange?: (stage: EnquiryStage) => void;
 }
 
-export function EnquiryDetail({ open, onOpenChange, enquiry, onEdit }: EnquiryDetailProps) {
+export function EnquiryDetail({ open, onOpenChange, enquiry, onEdit, onStageChange }: EnquiryDetailProps) {
   if (!enquiry) return null;
 
   const stageIndex = ENQUIRY_STAGES.findIndex(s => s.key === enquiry.stage);
@@ -46,7 +56,27 @@ export function EnquiryDetail({ open, onOpenChange, enquiry, onEdit }: EnquiryDe
             
             <div className="flex gap-2">
               <Button variant="outline" size="sm" onClick={() => onEdit?.(enquiry)}>Edit</Button>
-              <Button variant="default" size="sm" className="bg-indigo-600 hover:bg-indigo-700">Actions</Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={
+                    <Button variant="default" size="sm" className="bg-indigo-600 hover:bg-indigo-700">
+                      Actions
+                    </Button>
+                  }
+                />
+                <DropdownMenuContent align="end">
+                  <DropdownMenuLabel>Change Stage</DropdownMenuLabel>
+                  {ENQUIRY_STAGES.filter((s) => s.key !== enquiry.stage).map((s) => (
+                    <DropdownMenuItem
+                      key={s.key}
+                      className={s.key === "lost" ? "text-destructive" : undefined}
+                      onClick={() => onStageChange?.(s.key)}
+                    >
+                      {s.key === "won" ? "Mark as Won" : s.key === "lost" ? "Mark as Lost" : `Move to ${s.label}`}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
 
