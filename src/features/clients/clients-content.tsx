@@ -67,6 +67,7 @@ import type { ClientRecord, ClientFormValues } from './client-form';
 import { listClients, saveClientForm, updateClientStatus, getClientErrorMessage } from './api';
 import { EnquiryForm } from '@/features/enquiries/enquiry-form';
 import { createEnquiry, type EnquiryFormValues } from '@/features/enquiries/api';
+import { createFollowUp, getFollowUpErrorMessage } from '@/features/follow-ups/api';
 import { ApiError } from '@/lib/api';
 import { useAuthStore } from '@/stores/auth-store';
 import { toast } from 'sonner';
@@ -328,10 +329,33 @@ export function ClientsContent() {
   };
 
   const handleEnquirySubmit = async (values: EnquiryFormValues) => {
-    await createEnquiry(values);
+    const created = await createEnquiry(values);
     toast.success('Enquiry created');
     setIsEnquiryFormOpen(false);
     setEnquiryPrefillClient(null);
+    // Exactly one automatic first Follow-up, created directly and
+    // sequentially right after the Enquiry — same behavior as the
+    // Enquiries page's own create flow. A failure here must not be
+    // mistaken for the Enquiry itself failing: it already exists, so this
+    // is reported as its own warning rather than swallowed or retried.
+    try {
+      await createFollowUp({
+        clientId: created.clientId,
+        enquiryId: created.id,
+        assignedToId: created.assignedTo || '',
+        subject: `Follow up: ${created.title}`,
+        description: '',
+        type: 'call',
+        priority: created.priority,
+        scheduledAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+        notes: '',
+        reminder: false,
+      });
+    } catch (error) {
+      toast.warning(
+        `Enquiry created, but the initial follow-up could not be created: ${getFollowUpErrorMessage(error)}`,
+      );
+    }
     await loadClients();
   };
 

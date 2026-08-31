@@ -24,6 +24,7 @@ import { ErrorState } from "@/components/shared/error-state";
 import { TableSkeleton } from "@/components/shared/skeleton-loader";
 import { EnquiryForm } from "./enquiry-form";
 import { EnquiryDetail } from "./enquiry-detail";
+import { createFollowUp, getFollowUpErrorMessage } from "@/features/follow-ups/api";
 import { Enquiry, ENQUIRY_STAGES } from "@/types/enquiry";
 import type { EnquiryStage } from "@/types/enquiry";
 import type { Priority } from "@/types/common";
@@ -212,9 +213,32 @@ export function EnquiriesContent() {
       return;
     }
 
-    await createEnquiry(values);
+    const created = await createEnquiry(values);
     setIsFormOpen(false);
     toast.success("Enquiry created");
+    // Exactly one automatic first Follow-up, created directly and
+    // sequentially right after the Enquiry — never in a useEffect, so it
+    // can't re-fire just because an enquiry exists. A failure here must not
+    // be mistaken for the Enquiry itself failing: it already exists, so
+    // this is reported as its own warning rather than swallowed or retried.
+    try {
+      await createFollowUp({
+        clientId: created.clientId,
+        enquiryId: created.id,
+        assignedToId: created.assignedTo || "",
+        subject: `Follow up: ${created.title}`,
+        description: "",
+        type: "call",
+        priority: created.priority,
+        scheduledAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+        notes: "",
+        reminder: false,
+      });
+    } catch (error) {
+      toast.warning(
+        `Enquiry created, but the initial follow-up could not be created: ${getFollowUpErrorMessage(error)}`,
+      );
+    }
     await loadEnquiries();
   };
 
