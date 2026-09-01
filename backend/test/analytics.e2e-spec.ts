@@ -72,7 +72,8 @@ function createFixtureEnquiry(
       expectedRevenue: 50000,
       probability: 50,
       priority: 'MEDIUM',
-      source: 'WEBSITE',
+      // No default sourceId — source is optional, and there is no fixed
+      // enum value to default to anymore (see EnquirySource).
       expectedCloseDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
       ...overrides,
     },

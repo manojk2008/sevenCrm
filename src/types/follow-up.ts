@@ -74,6 +74,18 @@ export interface FollowUp {
    */
   reminder: boolean;
 
+  /**
+   * True only for the single Follow-up an Enquiry's Next-follow-up-date
+   * automatically manages (see ensureNextFollowUp in
+   * src/features/enquiries/enquiries-content.tsx and
+   * src/features/clients/clients-content.tsx). Never settable through the
+   * normal create/update API — see createAutoManagedFollowUp in
+   * src/features/follow-ups/api.ts — so a manually-created Follow-up can
+   * never carry this as true. Not surfaced in the Follow-ups UI; it exists
+   * purely as an identification marker.
+   */
+  isAutoManaged: boolean;
+
   /** Derived by the backend; never stored. See FollowUpStatus above. */
   isOverdue: boolean;
 

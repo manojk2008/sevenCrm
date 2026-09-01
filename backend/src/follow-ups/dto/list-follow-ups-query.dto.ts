@@ -60,6 +60,16 @@ export class ListFollowUpsQueryDto {
   @IsString()
   assignedToId?: string;
 
+  // Lets the Enquiry-sync frontend code (ensureNextFollowUp) find the one
+  // auto-managed Follow-up for an enquiryId server-side, rather than
+  // downloading every Follow-up for it and filtering in the browser. Same
+  // boolean-coercion need as `overdue` below — query strings arrive as
+  // literal "true"/"false" strings.
+  @IsOptional()
+  @Transform(toOptionalBoolean)
+  @IsBoolean()
+  isAutoManaged?: boolean;
+
   // Inclusive lower/upper bounds on scheduledAt. Full ISO-8601 datetimes,
   // matching CreateFollowUpDto.scheduledAt — the calendar sends the first
   // and last instant of the visible range.

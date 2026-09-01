@@ -3,7 +3,7 @@
 import { use, useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Building2, Globe, MapPin, Send, MoreHorizontal, UploadCloud, Edit, Plus, RotateCcw } from 'lucide-react';
+import { ArrowLeft, Building2, Globe, MapPin, Send, MoreHorizontal, UploadCloud, Edit, Plus, RotateCcw, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -29,12 +29,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { ConfirmationDialog } from '@/components/shared/confirmation-dialog';
 import { EmptyState } from '@/components/shared/empty-state';
 import { ErrorState } from '@/components/shared/error-state';
 import { StatCardSkeleton } from '@/components/shared/skeleton-loader';
 import { ClientForm } from './client-form';
 import type { ClientRecord, ClientFormValues } from './client-form';
-import { getClient, saveClientForm, updateClientStatus, getClientErrorMessage } from './api';
+import { getClient, saveClientForm, updateClientStatus, deleteClient, getClientErrorMessage } from './api';
 import { ApiError } from '@/lib/api';
 import { useAuthStore } from '@/stores/auth-store';
 import { formatCurrency, formatRelativeTime, getInitials } from '@/lib/format';
@@ -46,6 +47,11 @@ export function ClientDetailContent({ params }: { params: Promise<{ id: string }
   const { id } = use(params);
   const router = useRouter();
   const logout = useAuthStore((state) => state.logout);
+  const currentUser = useAuthStore((state) => state.user);
+  // UX gating only — the backend (SUPER_ADMIN/ADMIN on every delete) remains
+  // the actual authorization boundary, same pattern as ProductsContent's
+  // canManage.
+  const canDelete = currentUser?.role === 'super-admin' || currentUser?.role === 'admin';
 
   const [client, setClient] = useState<ClientRecord | null>(null);
   const [loadState, setLoadState] = useState<LoadState>('loading');
@@ -55,6 +61,9 @@ export function ClientDetailContent({ params }: { params: Promise<{ id: string }
   const [churnReasonInput, setChurnReasonInput] = useState('');
   const [isDeactivating, setIsDeactivating] = useState(false);
   const [isReactivating, setIsReactivating] = useState(false);
+  const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
 
   const handleUnauthorized = useCallback(() => {
     logout();
@@ -187,6 +196,27 @@ export function ClientDetailContent({ params }: { params: Promise<{ id: string }
     }
   };
 
+  const handleDelete = async () => {
+    setIsDeleting(true);
+    setDeleteError('');
+    try {
+      await deleteClient(client.id);
+      toast.success(`${client.name} has been permanently deleted`);
+      setIsDeleteOpen(false);
+      router.push('/clients');
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        handleUnauthorized();
+        return;
+      }
+      // Keep the client and the dialog usable — most commonly a 409
+      // because related enquiries/quotations/follow-ups still exist.
+      setDeleteError(getClientErrorMessage(error));
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   const contacts = client.contacts ?? [];
 
   return (
@@ -208,7 +238,9 @@ export function ClientDetailContent({ params }: { params: Promise<{ id: string }
           <div>
             <div className="flex items-center gap-3 mb-1">
               <h1 className="text-2xl font-bold text-foreground">{client.name}</h1>
-              <Badge variant="secondary" className="capitalize text-xs">{client.industry}</Badge>
+              {client.industry && (
+                <Badge variant="secondary" className="capitalize text-xs">{client.industry}</Badge>
+              )}
               <Badge className={client.status === 'active' ? "bg-success/10 text-success hover:bg-success/10" : "bg-muted text-foreground hover:bg-muted"}>
                 {client.status}
               </Badge>
@@ -256,6 +288,14 @@ export function ClientDetailContent({ params }: { params: Promise<{ id: string }
                 <DropdownMenuItem onClick={handleReactivate} disabled={isReactivating}>
                   <RotateCcw className="mr-2 h-4 w-4" /> {isReactivating ? "Reactivating…" : "Reactivate Client"}
                 </DropdownMenuItem>
+              )}
+              {canDelete && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem className="text-destructive" onClick={() => { setDeleteError(''); setIsDeleteOpen(true); }}>
+                    <Trash2 className="mr-2 h-4 w-4" /> Delete Client
+                  </DropdownMenuItem>
+                </>
               )}
             </DropdownMenuContent>
           </DropdownMenu>
@@ -464,6 +504,26 @@ export function ClientDetailContent({ params }: { params: Promise<{ id: string }
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Delete Confirmation */}
+      <ConfirmationDialog
+        open={isDeleteOpen}
+        onOpenChange={(open) => {
+          if (!open && !isDeleting) {
+            setIsDeleteOpen(false);
+            setDeleteError('');
+          }
+        }}
+        title="Delete this client?"
+        description={
+          deleteError ||
+          `Are you sure you want to permanently delete "${client.name}"? This action cannot be undone.`
+        }
+        confirmLabel="Delete"
+        variant="destructive"
+        loading={isDeleting}
+        onConfirm={handleDelete}
+      />
     </div>
   );
 }

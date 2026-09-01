@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { Session } from '@thallesp/nestjs-better-auth';
 import type { AppSession } from '../auth/session.types';
 import { ActiveUserGuard } from '../users/guards/active-user.guard';
@@ -12,9 +12,10 @@ import { ListProductsQueryDto } from './dto/list-products-query.dto';
 // (registered via AuthModule.forRoot in app.module.ts) — every route below
 // already requires a valid session with no further annotation needed.
 //
-// There is deliberately no DELETE route: like Clients/Enquiries/Product
-// Groups, a product is never hard-deleted; deactivation (status ->
-// INACTIVE) is the lifecycle mechanism.
+// Deactivation (status -> INACTIVE) remains the normal lifecycle mechanism.
+// DELETE below is a separate, SUPER_ADMIN/ADMIN-only permanent-removal
+// action, blocked whenever the product is still referenced by an
+// EnquiryProduct or QuotationLineItem row — see ProductsService.delete.
 @Controller('products')
 @UseGuards(ActiveUserGuard)
 export class ProductsController {
@@ -47,5 +48,10 @@ export class ProductsController {
     @Session() session: AppSession,
   ) {
     return this.productsService.updateStatus(id, dto, session.user);
+  }
+
+  @Delete(':id')
+  delete(@Param('id') id: string, @Session() session: AppSession) {
+    return this.productsService.delete(id, session.user);
   }
 }

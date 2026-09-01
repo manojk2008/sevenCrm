@@ -42,6 +42,7 @@ export interface BackendFollowUp {
   outcome: string | null;
   notes: string | null;
   reminder: boolean;
+  isAutoManaged: boolean;
   isOverdue: boolean;
   createdAt: string;
   updatedAt: string;
@@ -134,6 +135,7 @@ export function toFollowUp(followUp: BackendFollowUp): FollowUp {
     outcome: followUp.outcome,
     notes: followUp.notes,
     reminder: followUp.reminder,
+    isAutoManaged: followUp.isAutoManaged,
     isOverdue: followUp.isOverdue,
     createdAt: followUp.createdAt,
     updatedAt: followUp.updatedAt,
@@ -157,6 +159,8 @@ export interface ListFollowUpsParams {
   clientId?: string;
   enquiryId?: string;
   assignedToId?: string;
+  /** Server-side filter on isAutoManaged — see FollowUp.isAutoManaged. */
+  isAutoManaged?: boolean;
   /** Full ISO-8601 timestamps — inclusive bounds on scheduledAt. */
   scheduledFrom?: string;
   scheduledTo?: string;
@@ -193,6 +197,7 @@ export async function listFollowUps(
   if (params.clientId) query.set("clientId", params.clientId);
   if (params.enquiryId) query.set("enquiryId", params.enquiryId);
   if (params.assignedToId) query.set("assignedToId", params.assignedToId);
+  if (params.isAutoManaged !== undefined) query.set("isAutoManaged", String(params.isAutoManaged));
   if (params.scheduledFrom) query.set("scheduledFrom", params.scheduledFrom);
   if (params.scheduledTo) query.set("scheduledTo", params.scheduledTo);
   if (params.overdue !== undefined) query.set("overdue", String(params.overdue));
@@ -238,7 +243,7 @@ interface CreateFollowUpBody {
   reminder: boolean;
 }
 
-export async function createFollowUp(values: FollowUpFormValues): Promise<FollowUp> {
+function toCreateBody(values: FollowUpFormValues): CreateFollowUpBody {
   const body: CreateFollowUpBody = {
     clientId: values.clientId,
     subject: values.subject,
@@ -254,11 +259,31 @@ export async function createFollowUp(values: FollowUpFormValues): Promise<Follow
   if (values.assignedToId) body.assignedToId = values.assignedToId;
   if (values.description) body.description = values.description;
   if (values.notes) body.notes = values.notes;
+  return body;
+}
 
+export async function createFollowUp(values: FollowUpFormValues): Promise<FollowUp> {
   return toFollowUp(
     await apiFetch<BackendFollowUp>("/follow-ups", {
       method: "POST",
-      body: JSON.stringify(body),
+      body: JSON.stringify(toCreateBody(values)),
+    }),
+  );
+}
+
+/**
+ * POST /follow-ups/auto-managed — the only way a Follow-up is created with
+ * `isAutoManaged: true`. Same body shape as createFollowUp (there is no
+ * `isAutoManaged` key to send; the backend sets it unconditionally for this
+ * route — see FollowUpsService.createAutoManaged). Used exclusively by the
+ * Enquiry-sync helpers (ensureNextFollowUp) in enquiries-content.tsx and
+ * clients-content.tsx — never by the manual Follow-up form.
+ */
+export async function createAutoManagedFollowUp(values: FollowUpFormValues): Promise<FollowUp> {
+  return toFollowUp(
+    await apiFetch<BackendFollowUp>("/follow-ups/auto-managed", {
+      method: "POST",
+      body: JSON.stringify(toCreateBody(values)),
     }),
   );
 }
@@ -319,4 +344,13 @@ export async function updateFollowUpStatus(
       body: JSON.stringify(body),
     }),
   );
+}
+
+/**
+ * Permanent removal — distinct from updateFollowUpStatus('cancelled'),
+ * which keeps the record. Safe with no conflict response to handle:
+ * FollowUp has no downstream FK dependencies.
+ */
+export async function deleteFollowUp(id: string): Promise<void> {
+  await apiFetch<{ id: string }>(`/follow-ups/${id}`, { method: "DELETE" });
 }

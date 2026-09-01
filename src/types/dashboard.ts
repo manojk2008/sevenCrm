@@ -5,8 +5,6 @@
 // /sales/* directly. This file only covers the handful of figures Sales has
 // no reason to compute: entity counts, lead sources, cross-entity recent
 // activity, and period-over-period counts of leads/meetings/quotes/wins.
-import type { EnquirySource } from "./enquiry";
-
 export interface DashboardSummary {
   /** Every Client row in the organization, regardless of status. */
   totalClients: number;
@@ -17,7 +15,9 @@ export interface DashboardSummary {
 }
 
 export interface LeadSourceBucket {
-  source: EnquirySource;
+  /** null only for the synthetic "Unspecified" bucket (enquiries with no source). */
+  id: string | null;
+  name: string;
   count: number;
 }
 

@@ -248,6 +248,16 @@ export async function updateClientStatus(
   return toClientRecord(await updateClientStatusRaw(id, status, churnReason));
 }
 
+/**
+ * Permanent removal — distinct from updateClientStatus('inactive'), which
+ * keeps the record. The backend rejects this with a 409 (surfaced via
+ * getClientErrorMessage) if the client still has any Enquiry, Quotation, or
+ * Follow-up on record.
+ */
+export async function deleteClient(id: string): Promise<void> {
+  await apiFetch<{ id: string }>(`/clients/${id}`, { method: "DELETE" });
+}
+
 async function syncPrimaryContact(
   clientId: string,
   values: ClientFormValues,

@@ -13,6 +13,7 @@ import {
   Edit,
   PowerOff,
   RotateCcw,
+  Trash2,
   Package,
   Settings2,
 } from "lucide-react";
@@ -50,6 +51,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { ConfirmationDialog } from "@/components/shared/confirmation-dialog";
 import { ErrorState } from "@/components/shared/error-state";
 import { TableSkeleton } from "@/components/shared/skeleton-loader";
 import { ApiError } from "@/lib/api";
@@ -63,6 +65,7 @@ import {
   createProduct,
   updateProduct,
   updateProductStatus,
+  deleteProduct,
   getProductErrorMessage,
   type StatusFilter,
 } from "./api";
@@ -115,6 +118,9 @@ export function ProductsContent() {
   const [isGroupsDialogOpen, setIsGroupsDialogOpen] = useState(false);
   const [productToDeactivate, setProductToDeactivate] = useState<Product | null>(null);
   const [isDeactivating, setIsDeactivating] = useState(false);
+  const [productToDelete, setProductToDelete] = useState<Product | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
 
   // A 401 means the session is gone — the backend is authoritative, so we
   // clear local state and send the user back to login rather than leaving a
@@ -241,6 +247,28 @@ export function ProductsContent() {
     }
   };
 
+  const handleDelete = async () => {
+    if (!productToDelete) return;
+    setIsDeleting(true);
+    setDeleteError("");
+    try {
+      await deleteProduct(productToDelete.id);
+      toast.success(`${productToDelete.name} has been permanently deleted`);
+      setProductToDelete(null);
+      await loadProducts();
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        handleUnauthorized();
+        return;
+      }
+      // Keep the product and the dialog usable — most commonly a 409
+      // because it's still referenced by an enquiry or quotation.
+      setDeleteError(getProductErrorMessage(error));
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   const openCreateForm = () => {
     setEditingProduct(null);
     setIsFormOpen(true);
@@ -332,6 +360,15 @@ export function ProductsContent() {
                   <RotateCcw className="mr-2 h-4 w-4" /> Reactivate product
                 </DropdownMenuItem>
               )}
+              <DropdownMenuItem
+                className="text-destructive"
+                onClick={() => {
+                  setProductToDelete(product);
+                  setDeleteError("");
+                }}
+              >
+                <Trash2 className="mr-2 h-4 w-4" /> Delete product
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         );
@@ -646,6 +683,25 @@ export function ProductsContent() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <ConfirmationDialog
+        open={!!productToDelete}
+        onOpenChange={(open) => {
+          if (!open && !isDeleting) {
+            setProductToDelete(null);
+            setDeleteError("");
+          }
+        }}
+        title="Delete this product?"
+        description={
+          deleteError ||
+          `Are you sure you want to permanently delete "${productToDelete?.name}"? This action cannot be undone.`
+        }
+        confirmLabel="Delete"
+        variant="destructive"
+        loading={isDeleting}
+        onConfirm={handleDelete}
+      />
     </motion.div>
   );
 }

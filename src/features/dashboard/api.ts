@@ -9,7 +9,6 @@
  * owns those definitions (Phase 8 decision D6: no second implementation).
  */
 import { apiFetch, ApiError, getFriendlyErrorMessage } from "@/lib/api";
-import type { EnquirySource } from "@/types/enquiry";
 import type {
   Activity,
   ActivityType,
@@ -21,37 +20,11 @@ import type {
   RecentActivity,
 } from "@/types/dashboard";
 
-type BackendEnquirySource =
-  | "WEBSITE"
-  | "REFERRAL"
-  | "COLD_CALL"
-  | "SOCIAL_MEDIA"
-  | "EMAIL"
-  | "TRADE_SHOW"
-  | "ADVERTISEMENT"
-  | "PARTNER"
-  | "OTHER";
-
 type BackendActivityType =
   | "CLIENT_CREATED"
   | "ENQUIRY_CREATED"
   | "QUOTATION_CREATED"
   | "FOLLOW_UP_COMPLETED";
-
-// Same rule as every other feature's api.ts: an exhaustive Record, never
-// `toLowerCase()` string munging, so an unhandled backend value fails to
-// compile instead of silently producing an invalid union member.
-const SOURCE_FROM_BACKEND: Record<BackendEnquirySource, EnquirySource> = {
-  WEBSITE: "website",
-  REFERRAL: "referral",
-  COLD_CALL: "cold-call",
-  SOCIAL_MEDIA: "social-media",
-  EMAIL: "email",
-  TRADE_SHOW: "trade-show",
-  ADVERTISEMENT: "advertisement",
-  PARTNER: "partner",
-  OTHER: "other",
-};
 
 const ACTIVITY_TYPE_FROM_BACKEND: Record<BackendActivityType, ActivityType> = {
   CLIENT_CREATED: "client-created",
@@ -61,7 +34,8 @@ const ACTIVITY_TYPE_FROM_BACKEND: Record<BackendActivityType, ActivityType> = {
 };
 
 interface BackendLeadSourceBucket {
-  source: BackendEnquirySource;
+  id: string | null;
+  name: string;
   count: number;
 }
 
@@ -113,7 +87,7 @@ export function getDashboardErrorMessage(error: unknown): string {
 }
 
 function toLeadSourceBucket(bucket: BackendLeadSourceBucket): LeadSourceBucket {
-  return { source: SOURCE_FROM_BACKEND[bucket.source], count: bucket.count };
+  return { id: bucket.id, name: bucket.name, count: bucket.count };
 }
 
 /**

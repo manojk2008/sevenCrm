@@ -44,6 +44,13 @@ interface FollowUpDetailProps {
   onEdit?: (followUp: FollowUp) => void;
   onComplete?: (followUp: FollowUp) => void;
   onCancel?: (followUp: FollowUp) => void;
+  /**
+   * Permanently deletes the follow-up; the parent owns the confirmation
+   * dialog. Omitted to hide the button entirely — used for the
+   * SUPER_ADMIN/ADMIN-only UX gate, same pattern as ProductsContent's
+   * canManage.
+   */
+  onDelete?: (followUp: FollowUp) => void;
 }
 
 function Field({
@@ -76,6 +83,7 @@ export function FollowUpDetail({
   onEdit,
   onComplete,
   onCancel,
+  onDelete,
 }: FollowUpDetailProps) {
   if (!followUp) return null;
 
@@ -126,6 +134,16 @@ export function FollowUpDetail({
             {followUp.status === "scheduled" && onCancel && (
               <Button variant="outline" size="sm" onClick={() => onCancel(followUp)}>
                 Cancel follow-up
+              </Button>
+            )}
+            {onDelete && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-destructive hover:text-destructive"
+                onClick={() => onDelete(followUp)}
+              >
+                Delete
               </Button>
             )}
           </div>

@@ -18,18 +18,16 @@ export type BackendEnquiryStage =
   | "WON"
   | "LOST";
 
-export type BackendEnquirySource =
-  | "WEBSITE"
-  | "REFERRAL"
-  | "COLD_CALL"
-  | "SOCIAL_MEDIA"
-  | "EMAIL"
-  | "TRADE_SHOW"
-  | "ADVERTISEMENT"
-  | "PARTNER"
-  | "OTHER";
-
 export type BackendPriority = "LOW" | "MEDIUM" | "HIGH" | "URGENT";
+
+/** Mirrors SafeEnquirySource in backend/src/enquiry-sources/enquiry-sources.service.ts. */
+export interface BackendEnquirySource {
+  id: string;
+  organizationId: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+}
 
 /** Mirrors SafeEnquiryProduct in backend/src/enquiries/enquiries.service.ts. */
 export interface BackendEnquiryProduct {
@@ -55,7 +53,8 @@ export interface BackendEnquiry {
   expectedRevenue: number;
   probability: number;
   priority: BackendPriority;
-  source: BackendEnquirySource;
+  sourceId: string | null;
+  sourceName: string | null;
   assignedTo: { id: string; name: string; email: string } | null;
   description: string | null;
   notes: string | null;
@@ -102,30 +101,6 @@ export const STAGE_TO_BACKEND: Record<EnquiryStage, BackendEnquiryStage> = {
   lost: "LOST",
 };
 
-const SOURCE_FROM_BACKEND: Record<BackendEnquirySource, EnquirySource> = {
-  WEBSITE: "website",
-  REFERRAL: "referral",
-  COLD_CALL: "cold-call",
-  SOCIAL_MEDIA: "social-media",
-  EMAIL: "email",
-  TRADE_SHOW: "trade-show",
-  ADVERTISEMENT: "advertisement",
-  PARTNER: "partner",
-  OTHER: "other",
-};
-
-const SOURCE_TO_BACKEND: Record<EnquirySource, BackendEnquirySource> = {
-  website: "WEBSITE",
-  referral: "REFERRAL",
-  "cold-call": "COLD_CALL",
-  "social-media": "SOCIAL_MEDIA",
-  email: "EMAIL",
-  "trade-show": "TRADE_SHOW",
-  advertisement: "ADVERTISEMENT",
-  partner: "PARTNER",
-  other: "OTHER",
-};
-
 const PRIORITY_FROM_BACKEND: Record<BackendPriority, Priority> = {
   LOW: "low",
   MEDIUM: "medium",
@@ -169,6 +144,16 @@ function toEnquiryProduct(product: BackendEnquiryProduct): EnquiryProduct {
   };
 }
 
+/** Maps a backend enquiry source onto the frontend `EnquirySource` type. */
+function toEnquirySource(source: BackendEnquirySource): EnquirySource {
+  return {
+    id: source.id,
+    name: source.name,
+    createdAt: source.createdAt,
+    updatedAt: source.updatedAt,
+  };
+}
+
 /**
  * Maps a backend enquiry onto the existing global `Enquiry` type.
  *
@@ -191,7 +176,8 @@ export function toEnquiry(enquiry: BackendEnquiry): Enquiry {
     expectedRevenue: enquiry.expectedRevenue,
     probability: enquiry.probability,
     priority: PRIORITY_FROM_BACKEND[enquiry.priority],
-    source: SOURCE_FROM_BACKEND[enquiry.source],
+    sourceId: enquiry.sourceId,
+    sourceName: enquiry.sourceName,
     // The global type models the assignee as a flat id + name pair; the
     // backend returns a nested object. Flattened here so the type stays
     // unchanged and no component has to know about the nesting.
@@ -217,6 +203,14 @@ export function getEnquiryErrorMessage(error: unknown): string {
   if (error instanceof ApiError) {
     if (error.status === 404) return "That enquiry could not be found.";
     if (error.status === 409) return error.message || "This conflicts with an existing enquiry.";
+  }
+  return getFriendlyErrorMessage(error);
+}
+
+/** Enquiry-source-specific 409 wording (duplicate name); falls back otherwise. */
+export function getEnquirySourceErrorMessage(error: unknown): string {
+  if (error instanceof ApiError && error.status === 409) {
+    return error.message || "This source conflicts with an existing one.";
   }
   return getFriendlyErrorMessage(error);
 }
@@ -262,7 +256,8 @@ export interface EnquiryFormValues {
   expectedRevenue: number;
   probability: number;
   priority: Priority;
-  source: EnquirySource;
+  /** "" means no source selected — source is optional. */
+  sourceId: string;
   expectedCloseDate: string;
   description?: string;
   assignedToId?: string;
@@ -280,7 +275,7 @@ interface CreateEnquiryBody {
   expectedRevenue: number;
   probability: number;
   priority: BackendPriority;
-  source: BackendEnquirySource;
+  sourceId?: string;
   expectedCloseDate: string;
   description?: string;
   assignedToId?: string;
@@ -303,10 +298,10 @@ export async function createEnquiry(values: EnquiryFormValues): Promise<Enquiry>
     expectedRevenue: values.expectedRevenue,
     probability: values.probability,
     priority: PRIORITY_TO_BACKEND[values.priority],
-    source: SOURCE_TO_BACKEND[values.source],
     expectedCloseDate: toIsoDate(values.expectedCloseDate),
     productIds: values.productIds,
   };
+  if (values.sourceId) body.sourceId = values.sourceId;
   if (values.description) body.description = values.description;
   if (values.assignedToId) body.assignedToId = values.assignedToId;
 
@@ -322,12 +317,15 @@ export async function createEnquiry(values: EnquiryFormValues): Promise<Enquiry>
  * updateEnquiryStage) and id/organizationId/timestamps (never client-settable).
  */
 export async function updateEnquiry(id: string, values: EnquiryFormValues): Promise<Enquiry> {
-  const body: Omit<CreateEnquiryBody, "clientId"> = {
+  const body: Omit<CreateEnquiryBody, "clientId" | "sourceId"> & { sourceId: string | null } = {
     title: values.title,
     expectedRevenue: values.expectedRevenue,
     probability: values.probability,
     priority: PRIORITY_TO_BACKEND[values.priority],
-    source: SOURCE_TO_BACKEND[values.source],
+    // Always sent (unlike description/assignedToId below): "" means the
+    // user cleared it, and null is how the backend distinguishes "clear"
+    // from "leave untouched" (see UpdateEnquiryDto.sourceId).
+    sourceId: values.sourceId || null,
     expectedCloseDate: toIsoDate(values.expectedCloseDate),
     // Sent as the full replacement set: the backend attaches what is new,
     // detaches what is missing, and leaves everything else alone — which is
@@ -365,6 +363,40 @@ export async function updateEnquiryStage(
     await apiFetch<BackendEnquiry>(`/enquiries/${id}/stage`, {
       method: "PATCH",
       body: JSON.stringify(body),
+    }),
+  );
+}
+
+/**
+ * Permanent removal — distinct from a stage change to lost/won, which
+ * keeps the record. Safe with no conflict response to handle: the backend
+ * cascades EnquiryProduct join rows and clears (never deletes) any linked
+ * Quotation/Follow-up's enquiryId.
+ */
+export async function deleteEnquiry(id: string): Promise<void> {
+  await apiFetch<{ id: string }>(`/enquiries/${id}`, { method: "DELETE" });
+}
+
+/**
+ * GET /enquiry-sources — every source belonging to the caller's
+ * organization, alphabetical. Populates the Enquiry form's Source dropdown;
+ * there is no hardcoded list anywhere on the frontend to fall back to.
+ */
+export async function listEnquirySources(): Promise<EnquirySource[]> {
+  const result = await apiFetch<BackendEnquirySource[]>("/enquiry-sources");
+  return result.map(toEnquirySource);
+}
+
+/**
+ * POST /enquiry-sources. `name` is trimmed server-side; the backend rejects
+ * a blank/whitespace-only value and a case-insensitive duplicate within the
+ * organization with a 409 (see getEnquirySourceErrorMessage).
+ */
+export async function createEnquirySource(name: string): Promise<EnquirySource> {
+  return toEnquirySource(
+    await apiFetch<BackendEnquirySource>("/enquiry-sources", {
+      method: "POST",
+      body: JSON.stringify({ name }),
     }),
   );
 }

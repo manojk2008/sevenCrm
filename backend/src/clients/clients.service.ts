@@ -105,7 +105,10 @@ export class ClientsService {
         data: {
           organizationId: currentUser.organizationId,
           companyName: dto.companyName,
-          industry: dto.industry,
+          // Optional: omitted means "no category yet" — the column stays
+          // NOT NULL (no migration needed for this), so an omission is
+          // stored as "", not NULL, unlike Client.email.
+          industry: dto.industry ?? '',
           website: dto.website,
           // Optional: omitted (or blank) means "no email yet" — stored as
           // NULL, never an empty string (see the schema's unique index
@@ -248,6 +251,48 @@ export class ClientsService {
     return this.toSafeClient(updated);
   }
 
+  /**
+   * Permanent removal — distinct from updateStatus's INACTIVE, which keeps
+   * the record and its history. Blocked (409) if the client has any
+   * Enquiry, Quotation, or Follow-up on record, historical or not: those
+   * are business records this method must never cascade-delete or detach.
+   * ClientContact rows are the only thing allowed to disappear with the
+   * client, via the schema's own Cascade.
+   */
+  async delete(id: string, currentUser: CurrentUser): Promise<{ id: string }> {
+    this.assertCanDelete(currentUser);
+    const existing = await this.getOrgClientOrThrow(id, currentUser);
+
+    const [enquiryCount, quotationCount, followUpCount] = await Promise.all([
+      prisma.enquiry.count({ where: { clientId: existing.id } }),
+      prisma.quotation.count({ where: { clientId: existing.id } }),
+      prisma.followUp.count({ where: { clientId: existing.id } }),
+    ]);
+
+    if (enquiryCount > 0 || quotationCount > 0 || followUpCount > 0) {
+      const parts: string[] = [];
+      if (enquiryCount > 0) {
+        parts.push(`${enquiryCount} ${enquiryCount === 1 ? 'enquiry' : 'enquiries'}`);
+      }
+      if (quotationCount > 0) {
+        parts.push(`${quotationCount} ${quotationCount === 1 ? 'quotation' : 'quotations'}`);
+      }
+      if (followUpCount > 0) {
+        parts.push(`${followUpCount} ${followUpCount === 1 ? 'follow-up' : 'follow-ups'}`);
+      }
+      throw new ConflictException(
+        `Cannot delete this client because it has ${parts.join(', ')} on record.`,
+      );
+    }
+
+    try {
+      await prisma.client.delete({ where: { id: existing.id } });
+    } catch (error) {
+      throw this.mapWriteError(error);
+    }
+    return { id: existing.id };
+  }
+
   async listContacts(clientId: string, currentUser: CurrentUser): Promise<SafeClientContact[]> {
     this.assertCanRead(currentUser);
     const client = await this.getOrgClientOrThrow(clientId, currentUser);
@@ -377,6 +422,15 @@ export class ClientsService {
   private assertCanManageStatus(currentUser: CurrentUser): void {
     if (currentUser.crmRole !== UserRole.SUPER_ADMIN && currentUser.crmRole !== UserRole.ADMIN) {
       throw new ForbiddenException('Only a Super Admin or Admin can change a client\'s status.');
+    }
+  }
+
+  // Same SUPER_ADMIN/ADMIN gate as assertCanManageStatus — permanent
+  // deletion is at least as sensitive as deactivating, so it gets no wider
+  // an audience.
+  private assertCanDelete(currentUser: CurrentUser): void {
+    if (currentUser.crmRole !== UserRole.SUPER_ADMIN && currentUser.crmRole !== UserRole.ADMIN) {
+      throw new ForbiddenException('Only a Super Admin or Admin can delete a client.');
     }
   }
 

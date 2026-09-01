@@ -1,6 +1,6 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
 import { prisma } from '../auth/auth';
-import { EnquiryStage, EnquirySource, FollowUpType, UserRole } from '../../generated/prisma/enums';
+import { EnquiryStage, FollowUpType, UserRole } from '../../generated/prisma/enums';
 import type { AppSession } from '../auth/session.types';
 import { LeadSourcesQueryDto } from './dto/lead-sources-query.dto';
 import { RecentActivityQueryDto } from './dto/recent-activity-query.dto';
@@ -34,7 +34,9 @@ export interface SafeDashboardSummary {
 }
 
 export interface SafeLeadSourceBucket {
-  source: EnquirySource;
+  /** null only for the synthetic "Unspecified" bucket — see getLeadSources. */
+  id: string | null;
+  name: string;
   count: number;
 }
 
@@ -166,24 +168,46 @@ export class DashboardService {
     const isSalesExec = currentUser.crmRole === UserRole.SALES_EXECUTIVE;
     const createdAt = this.createdAtFilter(query.from, query.to);
 
-    const groups = await prisma.enquiry.groupBy({
-      by: ['source'],
-      where: {
-        organizationId,
-        // Sales Executive ownership rule (Phase 19): scoped to enquiries
-        // belonging to the caller's own clients.
-        ...(isSalesExec ? { client: { assignedToId: currentUser.id } } : {}),
-        ...(createdAt ? { createdAt } : {}),
-      },
-      _count: { _all: true },
-    });
+    const enquiryWhere = {
+      organizationId,
+      // Sales Executive ownership rule (Phase 19): scoped to enquiries
+      // belonging to the caller's own clients.
+      ...(isSalesExec ? { client: { assignedToId: currentUser.id } } : {}),
+      ...(createdAt ? { createdAt } : {}),
+    };
 
-    // Zero-filled so every EnquirySource value is always present, exactly
-    // like SalesService's quotationStatusBreakdown.
-    const sources: SafeLeadSourceBucket[] = Object.values(EnquirySource).map((source) => ({
-      source,
-      count: groups.find((g) => g.source === source)?._count._all ?? 0,
-    }));
+    const [orgSources, groups] = await Promise.all([
+      // The organization's own persisted sources — there is no longer a
+      // fixed global list to zero-fill from (see EnquirySource).
+      prisma.enquirySource.findMany({
+        where: { organizationId },
+        select: { id: true, name: true },
+        orderBy: { name: 'asc' },
+      }),
+      prisma.enquiry.groupBy({
+        by: ['sourceId'],
+        where: enquiryWhere,
+        _count: { _all: true },
+      }),
+    ]);
+
+    // Zero-filled so every one of the organization's actual sources is
+    // always present, same principle as the old fixed-enum zero-fill —
+    // except the set is now this organization's own sources, plus a
+    // synthetic "Unspecified" bucket for enquiries with sourceId: null
+    // (source is optional now, unlike the old required enum column).
+    const sources: SafeLeadSourceBucket[] = [
+      ...orgSources.map((source) => ({
+        id: source.id,
+        name: source.name,
+        count: groups.find((g) => g.sourceId === source.id)?._count._all ?? 0,
+      })),
+      {
+        id: null,
+        name: 'Unspecified',
+        count: groups.find((g) => g.sourceId === null)?._count._all ?? 0,
+      },
+    ];
 
     return {
       period: {

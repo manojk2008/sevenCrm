@@ -13,6 +13,7 @@ import {
   Eye,
   Edit,
   Trash,
+  Trash2,
   RotateCcw,
   Building2,
   Mail,
@@ -60,14 +61,21 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { ConfirmationDialog } from '@/components/shared/confirmation-dialog';
 import { ErrorState } from '@/components/shared/error-state';
 import { TableSkeleton } from '@/components/shared/skeleton-loader';
 import { ClientForm } from './client-form';
 import type { ClientRecord, ClientFormValues } from './client-form';
-import { listClients, saveClientForm, updateClientStatus, getClientErrorMessage } from './api';
+import { listClients, saveClientForm, updateClientStatus, deleteClient, getClientErrorMessage } from './api';
 import { EnquiryForm } from '@/features/enquiries/enquiry-form';
 import { createEnquiry, type EnquiryFormValues } from '@/features/enquiries/api';
-import { createFollowUp, getFollowUpErrorMessage } from '@/features/follow-ups/api';
+import type { Enquiry } from '@/types/enquiry';
+import {
+  createAutoManagedFollowUp,
+  updateFollowUp,
+  listFollowUps,
+  getFollowUpErrorMessage,
+} from '@/features/follow-ups/api';
 import { ApiError } from '@/lib/api';
 import { useAuthStore } from '@/stores/auth-store';
 import { toast } from 'sonner';
@@ -88,6 +96,11 @@ export function ClientsContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const logout = useAuthStore((state) => state.logout);
+  const currentUser = useAuthStore((state) => state.user);
+  // UX gating only — the backend (SUPER_ADMIN/ADMIN on every delete) remains
+  // the actual authorization boundary, same pattern as ProductsContent's
+  // canManage.
+  const canDelete = currentUser?.role === 'super-admin' || currentUser?.role === 'admin';
 
   const [clients, setClients] = useState<ClientRecord[]>([]);
   const [loadState, setLoadState] = useState<LoadState>('loading');
@@ -115,6 +128,9 @@ export function ClientsContent() {
   const [clientToDeactivate, setClientToDeactivate] = useState<ClientRecord | null>(null);
   const [churnReasonInput, setChurnReasonInput] = useState('');
   const [isDeactivating, setIsDeactivating] = useState(false);
+  const [clientToDelete, setClientToDelete] = useState<ClientRecord | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
 
   // Set right after a new client is created with "Add enquiry after
   // creating client" checked — opens the existing EnquiryForm pre-filled
@@ -295,6 +311,11 @@ export function ClientsContent() {
                   <RotateCcw className="mr-2 h-4 w-4" /> Reactivate Client
                 </DropdownMenuItem>
               )}
+              {canDelete && (
+                <DropdownMenuItem className="text-destructive" onClick={() => { setClientToDelete(client); setDeleteError(''); }}>
+                  <Trash2 className="mr-2 h-4 w-4" /> Delete Client
+                </DropdownMenuItem>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         );
@@ -328,34 +349,80 @@ export function ClientsContent() {
     await loadClients();
   };
 
+  /**
+   * Keeps exactly one *active* (isAutoManaged, status scheduled) automatic
+   * Follow-up in sync with the Enquiry's Next Follow-up date — identical to
+   * enquiries-content.tsx's own ensureNextFollowUp, duplicated here for
+   * this Client → Enquiry creation flow (this file has no dependency on
+   * that one). Identified purely by the isAutoManaged flag — never by
+   * subject text, so a manually-created Follow-up (even one literally
+   * titled "Follow up: <same title>") can never be mistaken for it.
+   * Distinct from, and never touches, the separate, non-isAutoManaged
+   * "Follow up on quotation: <title>" Quotation Sent Follow-up.
+   *
+   * listFollowUps({ enquiryId, isAutoManaged: true }) is the existence
+   * check that makes this safe to call every time: on this create-only
+   * flow it will always find nothing and create, but is written the same
+   * way as the edit-aware version so the two stay behaviorally identical
+   * for a given Enquiry regardless of which flow first created it.
+   */
+  const ensureNextFollowUp = async (enquiry: Enquiry) => {
+    if (!enquiry.expectedCloseDate) return;
+    const subject = `Follow up: ${enquiry.title}`;
+
+    try {
+      const existing = await listFollowUps({
+        enquiryId: enquiry.id,
+        isAutoManaged: true,
+        pageSize: 100,
+      });
+      const match = existing.data.find((followUp) => followUp.status === 'scheduled');
+
+      if (match) {
+        await updateFollowUp(match.id, {
+          clientId: enquiry.clientId,
+          enquiryId: enquiry.id,
+          assignedToId: enquiry.assignedTo || '',
+          subject,
+          description: match.description ?? '',
+          type: match.type,
+          priority: enquiry.priority,
+          scheduledAt: enquiry.expectedCloseDate,
+          notes: match.notes ?? '',
+          reminder: match.reminder,
+        });
+      } else {
+        await createAutoManagedFollowUp({
+          clientId: enquiry.clientId,
+          enquiryId: enquiry.id,
+          assignedToId: enquiry.assignedTo || '',
+          subject,
+          description: '',
+          type: 'call',
+          priority: enquiry.priority,
+          scheduledAt: enquiry.expectedCloseDate,
+          notes: '',
+          reminder: false,
+        });
+      }
+    } catch (error) {
+      toast.warning(
+        `Enquiry saved, but the follow-up could not be synced: ${getFollowUpErrorMessage(error)}`,
+      );
+    }
+  };
+
   const handleEnquirySubmit = async (values: EnquiryFormValues) => {
     const created = await createEnquiry(values);
     toast.success('Enquiry created');
     setIsEnquiryFormOpen(false);
     setEnquiryPrefillClient(null);
-    // Exactly one automatic first Follow-up, created directly and
-    // sequentially right after the Enquiry — same behavior as the
-    // Enquiries page's own create flow. A failure here must not be
-    // mistaken for the Enquiry itself failing: it already exists, so this
-    // is reported as its own warning rather than swallowed or retried.
-    try {
-      await createFollowUp({
-        clientId: created.clientId,
-        enquiryId: created.id,
-        assignedToId: created.assignedTo || '',
-        subject: `Follow up: ${created.title}`,
-        description: '',
-        type: 'call',
-        priority: created.priority,
-        scheduledAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-        notes: '',
-        reminder: false,
-      });
-    } catch (error) {
-      toast.warning(
-        `Enquiry created, but the initial follow-up could not be created: ${getFollowUpErrorMessage(error)}`,
-      );
-    }
+    // Automatic Next Follow-up, created directly and sequentially right
+    // after the Enquiry — same behavior as the Enquiries page's own create
+    // flow. A failure here must not be mistaken for the Enquiry itself
+    // failing: it already exists, so this is reported as its own warning
+    // rather than swallowed or retried (see ensureNextFollowUp).
+    await ensureNextFollowUp(created);
     await loadClients();
   };
 
@@ -390,6 +457,28 @@ export function ClientsContent() {
       toast.error(getClientErrorMessage(error));
     } finally {
       setIsDeactivating(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!clientToDelete) return;
+    setIsDeleting(true);
+    setDeleteError('');
+    try {
+      await deleteClient(clientToDelete.id);
+      toast.success(`${clientToDelete.name} has been permanently deleted`);
+      setClientToDelete(null);
+      await loadClients();
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        handleUnauthorized();
+        return;
+      }
+      // Keep the client and the dialog usable — most commonly a 409 because
+      // related enquiries/quotations/follow-ups still exist.
+      setDeleteError(getClientErrorMessage(error));
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -713,6 +802,26 @@ export function ClientsContent() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Delete Confirmation */}
+      <ConfirmationDialog
+        open={!!clientToDelete}
+        onOpenChange={(open) => {
+          if (!open && !isDeleting) {
+            setClientToDelete(null);
+            setDeleteError('');
+          }
+        }}
+        title="Delete this client?"
+        description={
+          deleteError ||
+          `Are you sure you want to permanently delete "${clientToDelete?.name}"? This action cannot be undone.`
+        }
+        confirmLabel="Delete"
+        variant="destructive"
+        loading={isDeleting}
+        onConfirm={handleDelete}
+      />
     </div>
   );
 }

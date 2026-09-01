@@ -13,9 +13,10 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Check, Calendar, User, Building, MapPin, DollarSign, Target, Activity, Package } from "lucide-react";
+import { Check, Calendar, User, Building, MapPin, DollarSign, Target, Activity, Package, Trash2 } from "lucide-react";
 
 interface EnquiryDetailProps {
   open: boolean;
@@ -24,9 +25,17 @@ interface EnquiryDetailProps {
   onEdit?: (enquiry: Enquiry) => void;
   /** Moves the enquiry to a new stage; the parent owns the LOST-reason flow. */
   onStageChange?: (stage: EnquiryStage) => void;
+  /**
+   * Permanently deletes the enquiry; the parent owns the confirmation
+   * dialog. Omitted (or `canDelete` false) hides the menu item entirely —
+   * used for the SUPER_ADMIN/ADMIN-only UX gate, same pattern as
+   * ProductsContent's canManage.
+   */
+  onDelete?: (enquiry: Enquiry) => void;
+  canDelete?: boolean;
 }
 
-export function EnquiryDetail({ open, onOpenChange, enquiry, onEdit, onStageChange }: EnquiryDetailProps) {
+export function EnquiryDetail({ open, onOpenChange, enquiry, onEdit, onStageChange, onDelete, canDelete }: EnquiryDetailProps) {
   if (!enquiry) return null;
 
   const stageIndex = ENQUIRY_STAGES.findIndex(s => s.key === enquiry.stage);
@@ -76,6 +85,17 @@ export function EnquiryDetail({ open, onOpenChange, enquiry, onEdit, onStageChan
                         {s.key === "won" ? "Mark as Won" : s.key === "lost" ? "Mark as Lost" : `Move to ${s.label}`}
                       </DropdownMenuItem>
                     ))}
+                    {canDelete && (
+                      <>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          className="text-destructive"
+                          onClick={() => onDelete?.(enquiry)}
+                        >
+                          <Trash2 className="mr-2 h-4 w-4" /> Delete Enquiry
+                        </DropdownMenuItem>
+                      </>
+                    )}
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>
@@ -130,7 +150,7 @@ export function EnquiryDetail({ open, onOpenChange, enquiry, onEdit, onStageChan
               </div>
               <div>
                 <p className="text-xs text-slate-500 mb-1 flex items-center gap-1"><MapPin className="h-3 w-3"/> Source</p>
-                <p className="font-semibold text-foreground capitalize">{enquiry.source}</p>
+                <p className="font-semibold text-foreground">{enquiry.sourceName || "Not set"}</p>
               </div>
               <div>
                 <p className="text-xs text-slate-500 mb-1 flex items-center gap-1"><User className="h-3 w-3"/> Executive</p>
@@ -144,7 +164,7 @@ export function EnquiryDetail({ open, onOpenChange, enquiry, onEdit, onStageChan
                 </div>
               </div>
               <div>
-                <p className="text-xs text-slate-500 mb-1 flex items-center gap-1"><Calendar className="h-3 w-3"/> Expected Close</p>
+                <p className="text-xs text-slate-500 mb-1 flex items-center gap-1"><Calendar className="h-3 w-3"/> Next Follow-up</p>
                 <p className="font-semibold text-foreground text-sm">
                   {enquiry.expectedCloseDate ? format(new Date(enquiry.expectedCloseDate), "MMM d, yyyy") : "Not set"}
                 </p>

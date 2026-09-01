@@ -6,14 +6,12 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { isValidGSTINFormat } from "@/lib/gst";
-import { INDUSTRIES } from "@/types/client";
 import { ApiError } from "@/lib/api";
 import { getClientErrorMessage } from "./api";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Loader2 } from "lucide-react";
@@ -71,7 +69,10 @@ const clientSchema = z.object({
   id: z.string().optional(),
   name: z.string().min(1, "Company name is required"),
   contactperson: z.string().min(1, "Contact person is required"),
-  industry: z.string().min(1, "Industry is required"),
+  // Free text, optional: any non-empty value is accepted as-is, and blank
+  // is valid too — there is no fixed category list (see client-form.tsx's
+  // Category field, formerly a hardcoded Industry dropdown).
+  industry: z.string(),
   phone: z.string().min(1, "Phone number is required"),
   gstNumber: z.string().optional(),
   status: z.enum(["active", "inactive"]),
@@ -148,7 +149,6 @@ export function ClientForm({ open, onOpenChange, client, onSubmit }: ClientFormP
 
   const status = watch("status");
   const gstNumber = watch("gstNumber");
-  const industry = watch("industry");
   const name = watch("name");
   const addEnquiryAfterCreate = watch("addEnquiryAfterCreate");
 
@@ -224,17 +224,8 @@ export function ClientForm({ open, onOpenChange, client, onSubmit }: ClientFormP
                   <Input id="client-contact-person" {...register("contactperson")} className={errors.contactperson ? "border-destructive" : ""} />
                 </Field>
 
-                <Field id="client-industry" label="Industry" required error={errors.industry?.message}>
-                  <Select value={industry || undefined} onValueChange={(v) => v && setValue("industry", v, { shouldValidate: true })}>
-                    <SelectTrigger id="client-industry" className={errors.industry ? "border-destructive w-full" : "w-full"}>
-                      <SelectValue placeholder="Select industry" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {INDUSTRIES.map((option) => (
-                        <SelectItem key={option} value={option}>{option}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                <Field id="client-industry" label="Category" error={errors.industry?.message}>
+                  <Input id="client-industry" {...register("industry")} className={errors.industry ? "border-destructive" : ""} />
                 </Field>
 
                 <Field id="client-phone" label="Phone" required error={errors.phone?.message}>

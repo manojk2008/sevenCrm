@@ -12,9 +12,12 @@ export class UpdateClientDto {
   @MaxLength(200)
   companyName?: string;
 
+  // Free text, optional — presented as "Category" in the UI. An empty
+  // string is a valid value (clears it); there is no fixed list to
+  // validate against (see client-form.tsx, formerly a hardcoded Industry
+  // dropdown).
   @IsOptional()
   @IsString()
-  @MinLength(1)
   @MaxLength(200)
   industry?: string;
 

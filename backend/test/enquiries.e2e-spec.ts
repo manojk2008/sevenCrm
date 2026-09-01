@@ -82,7 +82,10 @@ describe('EnquiriesController (e2e)', () => {
       expectedRevenue: 150000.5,
       probability: 40,
       priority: 'HIGH',
-      source: 'WEBSITE',
+      // No default sourceId — source is optional, and the global
+      // forbidNonWhitelisted pipe would reject an unknown `source` key
+      // outright (there is no such DTO field anymore). Tests that care
+      // about a specific source pass `sourceId` in overrides.
       expectedCloseDate: '2026-12-31T00:00:00.000Z',
       ...overrides,
     };
@@ -298,17 +301,19 @@ describe('EnquiriesController (e2e)', () => {
     }
   }, 40000);
 
-  it('9. rejects invalid priority and source enum values', async () => {
+  it('9. rejects an invalid priority and a sourceId that does not exist', async () => {
     const cookies = await signIn(superAdmin.email);
     await request(app.getHttpServer())
       .post('/enquiries')
       .set('Cookie', cookies)
       .send(basePayload({ priority: 'CRITICAL' }))
       .expect(400);
+    // sourceId is no longer a fixed enum — an unknown id is rejected by
+    // EnquiriesService.assertSourceInOrg, not by DTO enum validation.
     await request(app.getHttpServer())
       .post('/enquiries')
       .set('Cookie', cookies)
-      .send(basePayload({ source: 'CARRIER_PIGEON' }))
+      .send(basePayload({ sourceId: 'nonexistent-source-id' }))
       .expect(400);
   });
 

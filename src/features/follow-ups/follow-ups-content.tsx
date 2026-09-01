@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import {
   AlertTriangle,
   Calendar as CalendarIcon,
@@ -20,6 +21,7 @@ import {
   PhoneCall,
   Plus,
   Search,
+  Trash2,
   Users,
   XCircle,
 } from "lucide-react";
@@ -81,6 +83,7 @@ import {
 import type { Priority } from "@/types/common";
 import {
   createFollowUp,
+  deleteFollowUp,
   getFollowUpErrorMessage,
   listFollowUps,
   updateFollowUp,
@@ -177,10 +180,14 @@ function StatusBadge({ followUp }: { followUp: FollowUp }) {
 export function FollowUpsContent({ initialCreateOpen = false }: FollowUpsContentProps = {}) {
   const router = useRouter();
   const logout = useAuthStore((state) => state.logout);
+  const currentUser = useAuthStore((state) => state.user);
 
   // Every CRM role may schedule, edit and complete follow-ups (this is
   // day-to-day sales work), matching FollowUpsService's authorization. The
-  // backend remains the actual boundary; this component gates nothing.
+  // backend remains the actual boundary; this component gates nothing —
+  // except permanent deletion (SUPER_ADMIN/ADMIN only), which is a
+  // narrower, UX-only gate mirroring ProductsContent's canManage.
+  const canDelete = currentUser?.role === "super-admin" || currentUser?.role === "admin";
 
   const [view, setView] = useState<View>("calendar");
   const [followUps, setFollowUps] = useState<FollowUp[]>([]);
@@ -220,6 +227,10 @@ export function FollowUpsContent({ initialCreateOpen = false }: FollowUpsContent
   const [cancelling, setCancelling] = useState<FollowUp | null>(null);
   const [isStatusSaving, setIsStatusSaving] = useState(false);
   const [statusError, setStatusError] = useState("");
+
+  const [followUpToDelete, setFollowUpToDelete] = useState<FollowUp | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
 
   const handleUnauthorized = useCallback(() => {
     logout();
@@ -455,6 +466,31 @@ export function FollowUpsContent({ initialCreateOpen = false }: FollowUpsContent
       setStatusError(getFollowUpErrorMessage(error));
     } finally {
       setIsStatusSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!followUpToDelete) return;
+    setIsDeleting(true);
+    setDeleteError("");
+    try {
+      await deleteFollowUp(followUpToDelete.id);
+      toast.success("Follow-up has been permanently deleted");
+      setFollowUps((prev) => prev.filter((f) => f.id !== followUpToDelete.id));
+      setFollowUpToDelete(null);
+      // Close the detail dialog if the deleted follow-up is the one open.
+      if (detail?.id === followUpToDelete.id) {
+        setIsDetailOpen(false);
+        setDetail(null);
+      }
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        handleUnauthorized();
+        return;
+      }
+      setDeleteError(getFollowUpErrorMessage(error));
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -983,6 +1019,17 @@ export function FollowUpsContent({ initialCreateOpen = false }: FollowUpsContent
                                         <XCircle className="mr-2 h-4 w-4" /> Cancel
                                       </DropdownMenuItem>
                                     )}
+                                    {canDelete && (
+                                      <DropdownMenuItem
+                                        className="text-destructive"
+                                        onClick={() => {
+                                          setDeleteError("");
+                                          setFollowUpToDelete(row);
+                                        }}
+                                      >
+                                        <Trash2 className="mr-2 h-4 w-4" /> Delete
+                                      </DropdownMenuItem>
+                                    )}
                                   </DropdownMenuContent>
                                 </DropdownMenu>
                               </div>
@@ -1047,6 +1094,14 @@ export function FollowUpsContent({ initialCreateOpen = false }: FollowUpsContent
         onEdit={openEdit}
         onComplete={openComplete}
         onCancel={setCancelling}
+        onDelete={
+          canDelete
+            ? (followUp) => {
+                setDeleteError("");
+                setFollowUpToDelete(followUp);
+              }
+            : undefined
+        }
       />
 
       {/* Completing requires an outcome — the backend rejects a blank one, so
@@ -1120,6 +1175,25 @@ export function FollowUpsContent({ initialCreateOpen = false }: FollowUpsContent
         variant="warning"
         loading={isStatusSaving}
         onConfirm={confirmCancel}
+      />
+
+      <ConfirmationDialog
+        open={!!followUpToDelete}
+        onOpenChange={(open) => {
+          if (!open && !isDeleting) {
+            setFollowUpToDelete(null);
+            setDeleteError("");
+          }
+        }}
+        title="Delete this follow-up?"
+        description={
+          deleteError ||
+          "Are you sure you want to permanently delete this follow-up? This action cannot be undone."
+        }
+        confirmLabel="Delete"
+        variant="destructive"
+        loading={isDeleting}
+        onConfirm={handleDelete}
       />
     </motion.div>
   );

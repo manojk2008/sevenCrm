@@ -49,6 +49,14 @@ export interface SafeFollowUp {
   notes: string | null;
   reminder: boolean;
   /**
+   * True only for the single Follow-up an Enquiry's Next-follow-up-date
+   * automatically manages (see ensureNextFollowUp in the frontend). Never
+   * settable through CreateFollowUpDto/UpdateFollowUpDto — see `create` vs
+   * `createAutoManaged` below — so a manually-created Follow-up can never
+   * carry this as true.
+   */
+  isAutoManaged: boolean;
+  /**
    * Derived, never stored — see the FollowUp model comment in schema.prisma.
    * True only while the follow-up is still SCHEDULED and its scheduled time
    * has already passed; a COMPLETED or CANCELLED follow-up is never overdue,
@@ -72,6 +80,31 @@ export class FollowUpsService {
   private readonly logger = new Logger(FollowUpsService.name);
 
   async create(dto: CreateFollowUpDto, currentUser: CurrentUser): Promise<SafeFollowUp> {
+    return this.createRaw(dto, currentUser, false);
+  }
+
+  /**
+   * The only way a Follow-up is ever created with `isAutoManaged: true`.
+   * Deliberately a separate method (and separate route — see
+   * FollowUpsController.createAutoManaged) rather than a flag on
+   * CreateFollowUpDto: that DTO is validated with the global
+   * `forbidNonWhitelisted` pipe, so a client sending `isAutoManaged` in a
+   * normal `POST /follow-ups` body is rejected outright, not silently
+   * accepted. This method is reachable only via the dedicated
+   * `POST /follow-ups/auto-managed` route the Enquiry-sync frontend code
+   * calls — there is no way for the manual Follow-up form to reach it.
+   * Shares every other validation/creation rule with `create` via
+   * `createRaw`.
+   */
+  async createAutoManaged(dto: CreateFollowUpDto, currentUser: CurrentUser): Promise<SafeFollowUp> {
+    return this.createRaw(dto, currentUser, true);
+  }
+
+  private async createRaw(
+    dto: CreateFollowUpDto,
+    currentUser: CurrentUser,
+    isAutoManaged: boolean,
+  ): Promise<SafeFollowUp> {
     this.assertCanCreate(currentUser);
 
     await this.assertClientInOrg(dto.clientId, currentUser);
@@ -101,6 +134,9 @@ export class FollowUpsService {
           scheduledAt: new Date(dto.scheduledAt),
           notes: dto.notes,
           reminder: dto.reminder ?? false,
+          // Never from `dto` — see this method's own doc comment and
+          // createAutoManaged's.
+          isAutoManaged,
         },
         include: FOLLOW_UP_INCLUDE,
       });
@@ -166,6 +202,9 @@ export class FollowUpsService {
       ...(query.clientId ? { clientId: query.clientId } : {}),
       ...(query.enquiryId ? { enquiryId: query.enquiryId } : {}),
       ...(query.assignedToId ? { assignedToId: query.assignedToId } : {}),
+      // Boolean, so `!== undefined` (not truthiness) — `isAutoManaged=false`
+      // must still filter, same reasoning as `overdue` below.
+      ...(query.isAutoManaged !== undefined ? { isAutoManaged: query.isAutoManaged } : {}),
       ...(conditions.length > 0 ? { AND: conditions } : {}),
     };
 
@@ -276,6 +315,26 @@ export class FollowUpsService {
     }
   }
 
+  /**
+   * Permanent removal — distinct from updateStatus's CANCELLED, which
+   * keeps the record and its history. No pre-check is needed: FollowUp is
+   * a leaf record with no downstream FK dependencies (nothing references a
+   * FollowUp), so deleting one can never orphan or cascade into any other
+   * business record. Works the same for an automatically-created initial
+   * follow-up as for any other.
+   */
+  async delete(id: string, currentUser: CurrentUser): Promise<{ id: string }> {
+    this.assertCanDelete(currentUser);
+    const existing = await this.getOrgFollowUpOrThrow(id, currentUser);
+
+    try {
+      await prisma.followUp.delete({ where: { id: existing.id } });
+    } catch (error) {
+      throw this.mapWriteError(error);
+    }
+    return { id: existing.id };
+  }
+
   // ---------------------------------------------------------------------
   // Authorization
   //
@@ -310,6 +369,17 @@ export class FollowUpsService {
   private assertCanUpdate(currentUser: CurrentUser): void {
     if (!this.hasCrmAccess(currentUser)) {
       throw new ForbiddenException('You do not have permission to update follow-ups.');
+    }
+  }
+
+  // Narrower than hasCrmAccess: permanent deletion is SUPER_ADMIN/ADMIN
+  // only, unlike the ordinary day-to-day schedule/complete/cancel work
+  // every Sales Executive performs — same tier as
+  // ClientsService.assertCanDelete / ProductsService.assertCanDelete /
+  // EnquiriesService.assertCanDelete.
+  private assertCanDelete(currentUser: CurrentUser): void {
+    if (currentUser.crmRole !== UserRole.SUPER_ADMIN && currentUser.crmRole !== UserRole.ADMIN) {
+      throw new ForbiddenException('Only a Super Admin or Admin can delete a follow-up.');
     }
   }
 
@@ -488,6 +558,7 @@ export class FollowUpsService {
       outcome: followUp.outcome,
       notes: followUp.notes,
       reminder: followUp.reminder,
+      isAutoManaged: followUp.isAutoManaged,
       isOverdue:
         followUp.status === FollowUpStatus.SCHEDULED && followUp.scheduledAt.getTime() < Date.now(),
       createdAt: followUp.createdAt,

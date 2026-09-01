@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   InternalServerErrorException,
@@ -154,6 +155,45 @@ export class ProductsService {
     return this.toSafeProduct(updated);
   }
 
+  /**
+   * Permanent removal — distinct from updateStatus's INACTIVE, which keeps
+   * the record and its history. Blocked (409) if the product is still
+   * referenced by any EnquiryProduct or QuotationLineItem row, historical
+   * or not: quotation history's productNameSnapshot/unitPriceSnapshot must
+   * never be touched by this method, and the schema's own Restrict on both
+   * relations would reject the delete anyway — this pre-check just turns
+   * that into a readable message instead of a raw FK error.
+   */
+  async delete(id: string, currentUser: CurrentUser): Promise<{ id: string }> {
+    this.assertCanDelete(currentUser);
+    const existing = await this.getOrgProductOrThrow(id, currentUser.organizationId);
+
+    const [enquiryProductCount, quotationLineItemCount] = await Promise.all([
+      prisma.enquiryProduct.count({ where: { productId: existing.id } }),
+      prisma.quotationLineItem.count({ where: { productId: existing.id } }),
+    ]);
+
+    if (enquiryProductCount > 0 || quotationLineItemCount > 0) {
+      const parts: string[] = [];
+      if (enquiryProductCount > 0) {
+        parts.push(`${enquiryProductCount} ${enquiryProductCount === 1 ? 'enquiry' : 'enquiries'}`);
+      }
+      if (quotationLineItemCount > 0) {
+        parts.push(`${quotationLineItemCount} ${quotationLineItemCount === 1 ? 'quotation' : 'quotations'}`);
+      }
+      throw new ConflictException(
+        `Cannot delete this product because it is used by ${parts.join(' and ')}.`,
+      );
+    }
+
+    try {
+      await prisma.product.delete({ where: { id: existing.id } });
+    } catch (error) {
+      throw this.mapWriteError(error);
+    }
+    return { id: existing.id };
+  }
+
   // ---------------------------------------------------------------------
   // Authorization
   //
@@ -177,6 +217,15 @@ export class ProductsService {
   private assertCanManage(currentUser: CurrentUser): void {
     if (currentUser.crmRole !== UserRole.SUPER_ADMIN && currentUser.crmRole !== UserRole.ADMIN) {
       throw new ForbiddenException('Only a Super Admin or Admin can manage products.');
+    }
+  }
+
+  // Same SUPER_ADMIN/ADMIN gate as assertCanManage — permanent deletion is
+  // at least as sensitive as create/update/deactivate, so it gets no wider
+  // an audience.
+  private assertCanDelete(currentUser: CurrentUser): void {
+    if (currentUser.crmRole !== UserRole.SUPER_ADMIN && currentUser.crmRole !== UserRole.ADMIN) {
+      throw new ForbiddenException('Only a Super Admin or Admin can delete a product.');
     }
   }
 

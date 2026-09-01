@@ -110,7 +110,9 @@ describe('Enquiry products (e2e)', () => {
       expectedRevenue: 150000.5,
       probability: 40,
       priority: 'HIGH',
-      source: 'WEBSITE',
+      // No default sourceId — source is optional, and the global
+      // forbidNonWhitelisted pipe would reject an unknown `source` key
+      // outright (there is no such DTO field anymore).
       expectedCloseDate: '2026-12-31T00:00:00.000Z',
       ...overrides,
     };

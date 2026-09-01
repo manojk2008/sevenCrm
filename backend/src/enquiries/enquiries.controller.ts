@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { Session } from '@thallesp/nestjs-better-auth';
 import type { AppSession } from '../auth/session.types';
 import { ActiveUserGuard } from '../users/guards/active-user.guard';
@@ -12,8 +12,10 @@ import { ListEnquiriesQueryDto } from './dto/list-enquiries-query.dto';
 // (registered via AuthModule.forRoot in app.module.ts) — every route below
 // already requires a valid session with no further annotation needed.
 //
-// There is deliberately no DELETE route: like Clients, enquiries are never
-// hard-deleted; a closed enquiry is represented by its LOST/WON stage.
+// A closed enquiry is still normally represented by its LOST/WON stage, not
+// by deletion — DELETE below is a separate, SUPER_ADMIN/ADMIN-only
+// permanent-removal action (see EnquiriesService.delete), not a replacement
+// for that stage workflow.
 @Controller('enquiries')
 @UseGuards(ActiveUserGuard)
 export class EnquiriesController {
@@ -46,5 +48,10 @@ export class EnquiriesController {
     @Session() session: AppSession,
   ) {
     return this.enquiriesService.updateStage(id, dto, session.user);
+  }
+
+  @Delete(':id')
+  delete(@Param('id') id: string, @Session() session: AppSession) {
+    return this.enquiriesService.delete(id, session.user);
   }
 }

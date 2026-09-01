@@ -41,7 +41,6 @@ import { getSalesSummary, getRevenueByPeriod, getRevenueByRepresentative, getSal
 import { getLeadSources, getDashboardErrorMessage } from "@/features/dashboard/api";
 import type { SalesSummary, RevenueByRepresentative } from "@/types/sales";
 import type { UnavailableMetric } from "@/types/analytics";
-import type { EnquirySource } from "@/types/enquiry";
 
 type Period = "week" | "month" | "quarter" | "year";
 
@@ -52,18 +51,6 @@ const PERIOD_LABEL: Record<Period, string> = {
   month: "the last 30 days",
   quarter: "the last 90 days",
   year: "the last 12 months",
-};
-
-const SOURCE_LABEL: Record<EnquirySource, string> = {
-  website: "Website",
-  referral: "Referral",
-  "cold-call": "Cold Call",
-  "social-media": "Social Media",
-  email: "Email",
-  "trade-show": "Trade Show",
-  advertisement: "Advertisement",
-  partner: "Partner",
-  other: "Other",
 };
 
 const CHART_COLORS = [
@@ -157,7 +144,7 @@ export function AnalyticsContent() {
           byRepresentative,
           leadSources: leadSourceResult.sources
             .filter((s) => s.count > 0)
-            .map((s) => ({ name: SOURCE_LABEL[s.source], value: s.count })),
+            .map((s) => ({ name: s.name, value: s.count })),
         });
         setUnavailable(analyticsSummary.unavailableMetrics);
         setErrorMessage("");

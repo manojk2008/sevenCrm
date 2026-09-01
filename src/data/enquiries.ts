@@ -1,4 +1,4 @@
-import { Enquiry, EnquiryStage, EnquirySource } from '@/types';
+import { Enquiry, EnquiryStage } from '@/types';
 import { clients } from './clients';
 import { users } from './users';
 
@@ -12,7 +12,10 @@ const stageDistribution: EnquiryStage[] = [
   ...Array(4).fill('lost'),
 ];
 
-const sources: EnquirySource[] = ['website', 'referral', 'cold-call', 'social-media', 'trade-show'];
+// Enquiry.source is now a user-created, organization-scoped lookup — this
+// unused mock data has no real EnquirySource ids to reference, so it just
+// carries a plausible display name with sourceId left null.
+const sourceNames = ['Website', 'Referral', 'Cold Call', 'Social Media', 'Trade Show'];
 const titles = ['ERP Implementation', 'Cloud Migration', 'Cybersecurity Audit', 'Mobile App Dev', 'AI Integration', 'Data Pipeline Setup', 'CRM Customization', 'HRMS Upgrade'];
 
 export const enquiries: Enquiry[] = stageDistribution.map((stage, i) => {
@@ -30,7 +33,8 @@ export const enquiries: Enquiry[] = stageDistribution.map((stage, i) => {
     expectedRevenue: 500000 + i * 200000,
     probability: stage === 'won' ? 100 : stage === 'lost' ? 0 : 10 + (i % 8) * 10,
     priority: i % 3 === 0 ? 'high' : i % 3 === 1 ? 'medium' : 'low',
-    source: sources[i % sources.length],
+    sourceId: null,
+    sourceName: sourceNames[i % sourceNames.length],
     assignedTo: assignedUser.id,
     assignedToName: assignedUser.name,
     // Enquiry.products is now a real EnquiryProduct[] resolved from the

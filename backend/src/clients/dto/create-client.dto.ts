@@ -10,10 +10,13 @@ export class CreateClientDto {
   @MaxLength(200)
   companyName!: string;
 
+  // Free text, optional — presented as "Category" in the UI. Any non-empty
+  // value is accepted as-is; there is no fixed list to validate against
+  // (see client-form.tsx, formerly a hardcoded Industry dropdown).
+  @IsOptional()
   @IsString()
-  @MinLength(1)
   @MaxLength(200)
-  industry!: string;
+  industry?: string;
 
   @IsOptional()
   @IsString()

@@ -8,13 +8,7 @@ import {
 } from '@nestjs/common';
 import { prisma } from '../auth/auth';
 import { Prisma } from '../../generated/prisma/client';
-import {
-  EnquirySource,
-  EnquiryStage,
-  Priority,
-  ProductStatus,
-  UserRole,
-} from '../../generated/prisma/enums';
+import { EnquiryStage, Priority, ProductStatus, UserRole } from '../../generated/prisma/enums';
 import type { AppSession } from '../auth/session.types';
 import { CreateEnquiryDto } from './dto/create-enquiry.dto';
 import { UpdateEnquiryDto } from './dto/update-enquiry.dto';
@@ -26,6 +20,7 @@ type CurrentUser = AppSession['user'];
 const ENQUIRY_INCLUDE = {
   client: { select: { id: true, companyName: true } },
   assignedTo: { select: { id: true, name: true, email: true } },
+  source: { select: { id: true, name: true } },
   // Attached products are resolved through the join model on every read
   // (list and detail alike) so the enquiry never carries a denormalized
   // product name. Ordered by product name for a stable display order that
@@ -83,7 +78,11 @@ export interface SafeEnquiry {
   expectedRevenue: number;
   probability: number;
   priority: Priority;
-  source: EnquirySource;
+  // Nullable — a lead source is optional. Resolved from the EnquirySource
+  // relation on every read, never denormalized, same precedent as
+  // clientName/assignedTo below.
+  sourceId: string | null;
+  sourceName: string | null;
   assignedTo: { id: string; name: string; email: string } | null;
   description: string | null;
   notes: string | null;
@@ -114,6 +113,9 @@ export class EnquiriesService {
     if (dto.assignedToId) {
       await this.assertAssignedUserInOrg(dto.assignedToId, currentUser.organizationId);
     }
+    if (dto.sourceId) {
+      await this.assertSourceInOrg(dto.sourceId, currentUser.organizationId);
+    }
 
     const stage = dto.stage ?? EnquiryStage.NEW;
     // DTO validation (ValidateIf) already guarantees lostReason is a
@@ -143,7 +145,7 @@ export class EnquiriesService {
           expectedRevenue: new Prisma.Decimal(dto.expectedRevenue),
           probability: dto.probability,
           priority: dto.priority,
-          source: dto.source,
+          sourceId: dto.sourceId ?? null,
           description: dto.description,
           notes: dto.notes,
           expectedCloseDate: new Date(dto.expectedCloseDate),
@@ -228,6 +230,9 @@ export class EnquiriesService {
     if (dto.assignedToId !== undefined && dto.assignedToId !== null) {
       await this.assertAssignedUserInOrg(dto.assignedToId, currentUser.organizationId);
     }
+    if (dto.sourceId !== undefined && dto.sourceId !== null) {
+      await this.assertSourceInOrg(dto.sourceId, currentUser.organizationId);
+    }
 
     // Resolved (and fully validated) before any write so a rejected product
     // set leaves the enquiry's own fields untouched as well.
@@ -247,7 +252,7 @@ export class EnquiriesService {
               : {}),
             ...(dto.probability !== undefined ? { probability: dto.probability } : {}),
             ...(dto.priority !== undefined ? { priority: dto.priority } : {}),
-            ...(dto.source !== undefined ? { source: dto.source } : {}),
+            ...(dto.sourceId !== undefined ? { sourceId: dto.sourceId } : {}),
             ...(dto.description !== undefined ? { description: dto.description } : {}),
             ...(dto.notes !== undefined ? { notes: dto.notes } : {}),
             ...(dto.expectedCloseDate !== undefined
@@ -319,6 +324,26 @@ export class EnquiriesService {
     }
   }
 
+  /**
+   * Permanent removal — distinct from a stage change to LOST/WON, which
+   * keeps the record. The schema already makes this safe with no pre-check
+   * needed: EnquiryProduct join rows are Cascade (removed automatically),
+   * and Quotation.enquiryId / FollowUp.enquiryId are SetNull, so any
+   * Quotations or Follow-ups raised from this enquiry survive with their
+   * enquiryId cleared rather than being deleted or orphaned.
+   */
+  async delete(id: string, currentUser: CurrentUser): Promise<{ id: string }> {
+    this.assertCanDelete(currentUser);
+    const existing = await this.getOrgEnquiryOrThrow(id, currentUser);
+
+    try {
+      await prisma.enquiry.delete({ where: { id: existing.id } });
+    } catch (error) {
+      throw this.mapWriteError(error);
+    }
+    return { id: existing.id };
+  }
+
   // ---------------------------------------------------------------------
   // Authorization
   //
@@ -366,6 +391,18 @@ export class EnquiriesService {
       currentUser.crmRole !== UserRole.SALES_EXECUTIVE
     ) {
       throw new ForbiddenException('You do not have permission to update enquiries.');
+    }
+  }
+
+  // SUPER_ADMIN/ADMIN only — narrower than assertCanUpdate. Permanent
+  // deletion is a different tier of sensitivity than the ordinary stage
+  // workflow every Sales Executive performs, so it follows the same
+  // narrower gate as ClientsService.assertCanDelete /
+  // ProductsService.assertCanManage rather than assertCanUpdate's 3-role
+  // gate.
+  private assertCanDelete(currentUser: CurrentUser): void {
+    if (currentUser.crmRole !== UserRole.SUPER_ADMIN && currentUser.crmRole !== UserRole.ADMIN) {
+      throw new ForbiddenException('Only a Super Admin or Admin can delete an enquiry.');
     }
   }
 
@@ -498,6 +535,17 @@ export class EnquiriesService {
     }
   }
 
+  // Scoped by organizationId so a source in another org is indistinguishable
+  // from one that does not exist — same non-leaking behaviour as
+  // assertClientInOrg/assertAssignedUserInOrg, and what makes it impossible
+  // for a caller to attach another organization's source to an enquiry.
+  private async assertSourceInOrg(sourceId: string, organizationId: string): Promise<void> {
+    const source = await prisma.enquirySource.findFirst({ where: { id: sourceId, organizationId } });
+    if (!source) {
+      throw new BadRequestException('sourceId must reference a source in your organization.');
+    }
+  }
+
   private async getOrgEnquiryOrThrow(
     id: string,
     currentUser: CurrentUser,
@@ -526,13 +574,13 @@ export class EnquiriesService {
 
   private mapWriteError(error: unknown): never {
     if (error instanceof Prisma.PrismaClientKnownRequestError) {
-      // P2003: a foreign key (clientId / assignedToId) pointed at a row that
-      // does not exist. Both are pre-validated above, so this is only
-      // reachable on a concurrent delete — reported as a 400 rather than
-      // surfacing the Prisma constraint name.
+      // P2003: a foreign key (clientId / assignedToId / sourceId) pointed at
+      // a row that does not exist. All are pre-validated above, so this is
+      // only reachable on a concurrent delete — reported as a 400 rather
+      // than surfacing the Prisma constraint name.
       if (error.code === 'P2003') {
         throw new BadRequestException(
-          'Referenced client, assigned user or product no longer exists.',
+          'Referenced client, assigned user, source or product no longer exists.',
         );
       }
       // P2002: the composite unique on EnquiryProduct fired — the same
@@ -568,7 +616,10 @@ export class EnquiriesService {
       expectedRevenue: Number(enquiry.expectedRevenue),
       probability: enquiry.probability,
       priority: enquiry.priority,
-      source: enquiry.source,
+      // Resolved from the EnquirySource relation on every read — never
+      // denormalized, so a renamed source is reflected immediately.
+      sourceId: enquiry.sourceId,
+      sourceName: enquiry.source?.name ?? null,
       assignedTo: enquiry.assignedTo,
       description: enquiry.description,
       notes: enquiry.notes,

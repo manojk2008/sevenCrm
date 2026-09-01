@@ -71,6 +71,11 @@ export class ClientsController {
     return this.clientsService.updateContact(id, contactId, dto, session.user);
   }
 
+  @Delete(':id')
+  delete(@Param('id') id: string, @Session() session: AppSession) {
+    return this.clientsService.delete(id, session.user);
+  }
+
   @Delete(':id/contacts/:contactId')
   deleteContact(
     @Param('id') id: string,

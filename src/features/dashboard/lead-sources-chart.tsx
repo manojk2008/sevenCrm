@@ -7,19 +7,6 @@ import { ChartSkeleton } from "@/components/shared/skeleton-loader";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from "recharts";
 import { formatNumber } from "@/lib/format";
 import { getLeadSources, getDashboardErrorMessage } from "./api";
-import type { EnquirySource } from "@/types/enquiry";
-
-const SOURCE_LABEL: Record<EnquirySource, string> = {
-  website: "Website",
-  referral: "Referral",
-  "cold-call": "Cold Call",
-  "social-media": "Social Media",
-  email: "Email",
-  "trade-show": "Trade Show",
-  advertisement: "Advertisement",
-  partner: "Partner",
-  other: "Other",
-};
 
 const CHART_COLORS = [
   "var(--chart-1)",
@@ -50,7 +37,7 @@ export function LeadSourcesChart() {
         setSlices(
           result.sources
             .filter((s) => s.count > 0)
-            .map((s) => ({ name: SOURCE_LABEL[s.source], value: s.count })),
+            .map((s) => ({ name: s.name, value: s.count })),
         );
         setTotalLeads(result.totalLeads);
         setErrorMessage("");

@@ -309,3 +309,13 @@ export async function updateProductStatus(id: string, status: ProductStatus): Pr
   });
   return toProduct(product);
 }
+
+/**
+ * Permanent removal — distinct from updateProductStatus('inactive'), which
+ * keeps the record. The backend rejects this with a 409 (surfaced via
+ * getProductErrorMessage) if the product is still referenced by any
+ * enquiry or quotation.
+ */
+export async function deleteProduct(id: string): Promise<void> {
+  await apiFetch<{ id: string }>(`/products/${id}`, { method: "DELETE" });
+}

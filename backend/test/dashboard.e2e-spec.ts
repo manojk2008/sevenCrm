@@ -75,7 +75,10 @@ function createFixtureEnquiry(
       expectedRevenue: 50000,
       probability: 50,
       priority: 'MEDIUM',
-      source: 'WEBSITE',
+      // No default sourceId — source is optional, and there is no fixed
+      // enum to default to anymore. A test that cares about a specific
+      // source passes `sourceId` in overrides (see the lead-sources fixtures
+      // below); everything else is intentionally "Unspecified".
       expectedCloseDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
       ...overrides,
     },
@@ -215,11 +218,28 @@ describe('DashboardController (e2e)', () => {
     });
 
     // --- Org A: 3 open-stage enquiries, 1 WON, 1 LOST -> openEnquiries = 3 ---
-    await createFixtureEnquiry(orgA.id, clientA1.id, { stage: 'NEW', source: 'WEBSITE' });
-    await createFixtureEnquiry(orgA.id, clientA1.id, { stage: 'CONTACTED', source: 'REFERRAL' });
-    await createFixtureEnquiry(orgA.id, clientA2.id, { stage: 'NEGOTIATION', source: 'REFERRAL' });
-    await createFixtureEnquiry(orgA.id, clientA1.id, { stage: 'WON', source: 'COLD_CALL' });
-    await createFixtureEnquiry(orgA.id, clientA2.id, { stage: 'LOST', source: 'WEBSITE' });
+    // Real, org-scoped EnquirySource fixtures — there is no fixed enum to
+    // reference anymore (see the lead-sources tests below).
+    const websiteSource = await prisma.enquirySource.create({
+      data: { organizationId: orgA.id, name: 'Website' },
+    });
+    const referralSource = await prisma.enquirySource.create({
+      data: { organizationId: orgA.id, name: 'Referral' },
+    });
+    const coldCallSource = await prisma.enquirySource.create({
+      data: { organizationId: orgA.id, name: 'Cold Call' },
+    });
+    await createFixtureEnquiry(orgA.id, clientA1.id, { stage: 'NEW', sourceId: websiteSource.id });
+    await createFixtureEnquiry(orgA.id, clientA1.id, {
+      stage: 'CONTACTED',
+      sourceId: referralSource.id,
+    });
+    await createFixtureEnquiry(orgA.id, clientA2.id, {
+      stage: 'NEGOTIATION',
+      sourceId: referralSource.id,
+    });
+    await createFixtureEnquiry(orgA.id, clientA1.id, { stage: 'WON', sourceId: coldCallSource.id });
+    await createFixtureEnquiry(orgA.id, clientA2.id, { stage: 'LOST', sourceId: websiteSource.id });
 
     // --- Recent activity fixtures, explicit timestamps for deterministic order ---
     const t1 = new Date('2025-01-01T00:00:00.000Z');
@@ -252,7 +272,10 @@ describe('DashboardController (e2e)', () => {
     for (let i = 0; i < 7; i++) {
       await createFixtureClient(orgB.id, `Org B Client ${i} ${runId}`);
     }
-    await createFixtureEnquiry(orgB.id, clientB.id, { stage: 'NEW', source: 'PARTNER' });
+    const partnerSourceB = await prisma.enquirySource.create({
+      data: { organizationId: orgB.id, name: 'Partner' },
+    });
+    await createFixtureEnquiry(orgB.id, clientB.id, { stage: 'NEW', sourceId: partnerSourceB.id });
   }, 60000);
 
   afterAll(async () => {
@@ -261,6 +284,10 @@ describe('DashboardController (e2e)', () => {
     await prisma.quotationNumberCounter.deleteMany({ where: { organizationId: { in: orgIds } } });
     await prisma.followUp.deleteMany({ where: { organizationId: { in: orgIds } } });
     await prisma.enquiry.deleteMany({ where: { organizationId: { in: orgIds } } });
+    // EnquirySource.organizationId is Restrict, not Cascade — must be
+    // deleted before the organization itself, same reasoning as every
+    // other org-scoped table cleaned up below.
+    await prisma.enquirySource.deleteMany({ where: { organizationId: { in: orgIds } } });
     await prisma.product.deleteMany({ where: { organizationId: { in: orgIds } } });
     await prisma.productGroup.deleteMany({ where: { organizationId: { in: orgIds } } });
     await prisma.client.deleteMany({ where: { organizationId: { in: orgIds } } });
@@ -343,21 +370,23 @@ describe('DashboardController (e2e)', () => {
 
   // -------------------------------------------------------- lead sources
 
-  it('8. zero-fills every EnquirySource value and totals them correctly', async () => {
+  it('8. zero-fills every organization source, adds an Unspecified bucket, and totals them correctly', async () => {
     const cookies = await signIn(superAdmin.email);
     const res = await request(app.getHttpServer())
       .get('/dashboard/lead-sources')
       .set('Cookie', cookies)
       .expect(200);
-    const sources: { source: string; count: number }[] = res.body.sources;
-    expect(sources).toHaveLength(9);
-    const bySource = new Map(sources.map((s) => [s.source, s.count]));
-    // WEBSITE: the NEW/WEBSITE enquiry, the LOST/WEBSITE enquiry, and the
-    // "Activity Enquiry" fixture (no source override -> defaults WEBSITE).
-    expect(bySource.get('WEBSITE')).toBe(3);
-    expect(bySource.get('REFERRAL')).toBe(2);
-    expect(bySource.get('COLD_CALL')).toBe(1);
-    expect(bySource.get('ADVERTISEMENT')).toBe(0);
+    const sources: { id: string | null; name: string; count: number }[] = res.body.sources;
+    // Org A's own 3 created sources (Website, Referral, Cold Call) plus the
+    // synthetic "Unspecified" bucket — never a fixed global list anymore.
+    expect(sources).toHaveLength(4);
+    const byName = new Map(sources.map((s) => [s.name, s.count]));
+    // Website: the NEW/Website enquiry and the LOST/Website enquiry.
+    expect(byName.get('Website')).toBe(2);
+    expect(byName.get('Referral')).toBe(2);
+    expect(byName.get('Cold Call')).toBe(1);
+    // The "Activity Enquiry" fixture has no source override.
+    expect(byName.get('Unspecified')).toBe(1);
     expect(res.body.totalLeads).toBe(sources.reduce((s, b) => s + b.count, 0));
     expect(res.body.period.basis).toBe('ENQUIRY_CREATED_AT');
   });
@@ -517,12 +546,10 @@ describe('DashboardController (e2e)', () => {
     const ownEnquiry = await createFixtureEnquiry(orgA.id, ownClient.id, {
       title: `P19 Dash Own Enquiry ${runId}`,
       stage: 'NEW',
-      source: 'WEBSITE',
     });
     const otherEnquiry = await createFixtureEnquiry(orgA.id, otherClient.id, {
       title: `P19 Dash Other Enquiry ${runId}`,
       stage: 'NEW',
-      source: 'WEBSITE',
     });
     await createFixtureQuotation(orgA.id, ownClient.id, {
       quotationNumber: `QT-P19-OWN-${runId}`,
@@ -570,11 +597,13 @@ describe('DashboardController (e2e)', () => {
       request(app.getHttpServer()).get('/dashboard/lead-sources').set('Cookie', salesCookies).expect(200),
       request(app.getHttpServer()).get('/dashboard/lead-sources').set('Cookie', superCookies).expect(200),
     ]);
-    const websiteBucket = salesLeadSources.body.sources.find(
-      (s: { source: string }) => s.source === 'WEBSITE',
+    // ownEnquiry's fixture carries no source override, so it lands in the
+    // synthetic "Unspecified" bucket.
+    const unspecifiedBucket = salesLeadSources.body.sources.find(
+      (s: { name: string }) => s.name === 'Unspecified',
     );
     // The caller's own enquiry contributes to the bucket.
-    expect(websiteBucket.count).toBeGreaterThanOrEqual(1);
+    expect(unspecifiedBucket.count).toBeGreaterThanOrEqual(1);
     // The Sales Executive's total is strictly less than the organization-wide
     // total (same metric, both queried with no period filter), proving the
     // other rep's enquiry did not leak in.

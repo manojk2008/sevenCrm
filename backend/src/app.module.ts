@@ -7,6 +7,7 @@ import { UsersModule } from './users/users.module';
 import { OrganizationsModule } from './organizations/organizations.module';
 import { ClientsModule } from './clients/clients.module';
 import { EnquiriesModule } from './enquiries/enquiries.module';
+import { EnquirySourcesModule } from './enquiry-sources/enquiry-sources.module';
 import { ProductGroupsModule } from './product-groups/product-groups.module';
 import { ProductsModule } from './products/products.module';
 import { QuotationsModule } from './quotations/quotations.module';
@@ -29,6 +30,7 @@ import { EmailTemplatesModule } from './email-templates/email-templates.module';
     OrganizationsModule,
     ClientsModule,
     EnquiriesModule,
+    EnquirySourcesModule,
     ProductGroupsModule,
     ProductsModule,
     QuotationsModule,

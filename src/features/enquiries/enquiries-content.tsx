@@ -20,11 +20,18 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { KanbanBoard } from "@/components/kanban/kanban-board";
+import { ConfirmationDialog } from "@/components/shared/confirmation-dialog";
 import { ErrorState } from "@/components/shared/error-state";
 import { TableSkeleton } from "@/components/shared/skeleton-loader";
 import { EnquiryForm } from "./enquiry-form";
 import { EnquiryDetail } from "./enquiry-detail";
-import { createFollowUp, getFollowUpErrorMessage } from "@/features/follow-ups/api";
+import {
+  createFollowUp,
+  createAutoManagedFollowUp,
+  updateFollowUp,
+  listFollowUps,
+  getFollowUpErrorMessage,
+} from "@/features/follow-ups/api";
 import { Enquiry, ENQUIRY_STAGES } from "@/types/enquiry";
 import type { EnquiryStage } from "@/types/enquiry";
 import type { Priority } from "@/types/common";
@@ -37,6 +44,7 @@ import {
   createEnquiry,
   updateEnquiry,
   updateEnquiryStage,
+  deleteEnquiry,
   getEnquiryErrorMessage,
   type EnquiryFormValues,
 } from "./api";
@@ -76,6 +84,10 @@ export function EnquiriesContent() {
   const searchParams = useSearchParams();
   const logout = useAuthStore((state) => state.logout);
   const currentUser = useAuthStore((state) => state.user);
+  // UX gating only — the backend (SUPER_ADMIN/ADMIN on every delete) remains
+  // the actual authorization boundary, same pattern as ProductsContent's
+  // canManage.
+  const canDelete = currentUser?.role === "super-admin" || currentUser?.role === "admin";
 
   const [view, setView] = useState<"kanban" | "table">("kanban");
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -114,6 +126,10 @@ export function EnquiriesContent() {
   >(null);
   const [lostReasonInput, setLostReasonInput] = useState("");
   const [isSavingStage, setIsSavingStage] = useState(false);
+
+  const [enquiryToDelete, setEnquiryToDelete] = useState<Enquiry | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
 
   // A 401 means the session is gone — the backend is authoritative, so we
   // clear local state and send the user back to login rather than leaving a
@@ -202,6 +218,75 @@ export function EnquiriesContent() {
     }
   };
 
+  /**
+   * Keeps exactly one *active* (isAutoManaged, status scheduled) automatic
+   * Follow-up in sync with the Enquiry's Next Follow-up date — used after
+   * both create and edit. Identified purely by the isAutoManaged flag (see
+   * FollowUp.isAutoManaged in schema.prisma) — never by subject text, so a
+   * manually-created Follow-up (even one literally titled
+   * "Follow up: <same title>") can never be mistaken for it. Distinct from,
+   * and never touches, ensureQuotationFollowUp's Follow-up, which is not
+   * isAutoManaged and keeps using its own separate subject convention.
+   *
+   * listFollowUps({ enquiryId, isAutoManaged: true }) is the existence
+   * check that makes this safe to call on every save: reopening/
+   * refreshing/re-editing the Enquiry, or saving without changing the date,
+   * all find the same scheduled match and update it in place rather than
+   * creating another. A Follow-up the user has already marked Completed/
+   * Cancelled is deliberately excluded from the match (status !==
+   * "scheduled") and left untouched as history — a new Scheduled one is
+   * created instead, which is also why updateFollowUp() below is never
+   * given a status to change; that endpoint doesn't accept one anyway
+   * (status only ever changes through updateFollowUpStatus, used by the
+   * Follow-ups page itself). The new one still goes through
+   * createAutoManagedFollowUp, so it too carries isAutoManaged: true.
+   */
+  const ensureNextFollowUp = useCallback(async (enquiry: Enquiry) => {
+    if (!enquiry.expectedCloseDate) return;
+    const subject = `Follow up: ${enquiry.title}`;
+
+    try {
+      const existing = await listFollowUps({
+        enquiryId: enquiry.id,
+        isAutoManaged: true,
+        pageSize: 100,
+      });
+      const match = existing.data.find((followUp) => followUp.status === "scheduled");
+
+      if (match) {
+        await updateFollowUp(match.id, {
+          clientId: enquiry.clientId,
+          enquiryId: enquiry.id,
+          assignedToId: enquiry.assignedTo || "",
+          subject,
+          description: match.description ?? "",
+          type: match.type,
+          priority: enquiry.priority,
+          scheduledAt: enquiry.expectedCloseDate,
+          notes: match.notes ?? "",
+          reminder: match.reminder,
+        });
+      } else {
+        await createAutoManagedFollowUp({
+          clientId: enquiry.clientId,
+          enquiryId: enquiry.id,
+          assignedToId: enquiry.assignedTo || "",
+          subject,
+          description: "",
+          type: "call",
+          priority: enquiry.priority,
+          scheduledAt: enquiry.expectedCloseDate,
+          notes: "",
+          reminder: false,
+        });
+      }
+    } catch (error) {
+      toast.warning(
+        `Enquiry saved, but the follow-up could not be synced: ${getFollowUpErrorMessage(error)}`,
+      );
+    }
+  }, []);
+
   const handleSubmitForm = async (values: EnquiryFormValues) => {
     if (editingEnquiry) {
       const updated = await updateEnquiry(editingEnquiry.id, values);
@@ -209,6 +294,10 @@ export function EnquiriesContent() {
       setEditingEnquiry(undefined);
       toast.success("Enquiry updated");
       if (selectedEnquiry?.id === updated.id) setSelectedEnquiry(updated);
+      // Keeps the Enquiry's Next Follow-up in sync — never a duplicate, see
+      // ensureNextFollowUp's own doc comment. Run after the success toast so
+      // a sync failure's warning reads as a follow-on, not a contradiction.
+      await ensureNextFollowUp(updated);
       await loadEnquiries();
       return;
     }
@@ -216,31 +305,60 @@ export function EnquiriesContent() {
     const created = await createEnquiry(values);
     setIsFormOpen(false);
     toast.success("Enquiry created");
-    // Exactly one automatic first Follow-up, created directly and
-    // sequentially right after the Enquiry — never in a useEffect, so it
-    // can't re-fire just because an enquiry exists. A failure here must not
-    // be mistaken for the Enquiry itself failing: it already exists, so
-    // this is reported as its own warning rather than swallowed or retried.
+    // Automatic Next Follow-up, created directly and sequentially right
+    // after the Enquiry — never in a useEffect, so it can't re-fire just
+    // because an enquiry exists. A failure here must not be mistaken for
+    // the Enquiry itself failing: it already exists, so this is reported as
+    // its own warning rather than swallowed or retried (see
+    // ensureNextFollowUp).
+    await ensureNextFollowUp(created);
+    await loadEnquiries();
+  };
+
+  /**
+   * Second automatic Follow-up (distinct from the initial one created on
+   * Enquiry creation — see handleSubmitForm): fired only when an Enquiry
+   * actually transitions into "quotation-sent" (see persistStageChange), so
+   * the sales executive is prompted to follow up on the quotation itself —
+   * when to re-contact the client, what feedback came back, and the next
+   * action — using the existing Follow-up form/detail, never a new system.
+   *
+   * The subject is the duplicate-prevention marker (same "subject as
+   * implicit identity" convention the initial Follow-up already relies on,
+   * rather than a new field/type): before creating, this checks whether a
+   * Follow-up with that exact subject already exists for the enquiry via
+   * the existing listFollowUps({ enquiryId }) filter, and does nothing if
+   * so. That single check is what makes re-saving the enquiry, reopening
+   * it, refreshing, or leaving-and-returning to quotation-sent all safe —
+   * none of those can produce a second quotation Follow-up. A failure in
+   * either the existence check or the creation itself is reported as a
+   * warning rather than rolling back the (already-successful) stage change,
+   * matching the initial Follow-up's own failure handling.
+   */
+  const ensureQuotationFollowUp = useCallback(async (enquiry: Enquiry) => {
+    const subject = `Follow up on quotation: ${enquiry.title}`;
     try {
+      const existing = await listFollowUps({ enquiryId: enquiry.id, pageSize: 100 });
+      if (existing.data.some((f) => f.subject === subject)) return;
+
       await createFollowUp({
-        clientId: created.clientId,
-        enquiryId: created.id,
-        assignedToId: created.assignedTo || "",
-        subject: `Follow up: ${created.title}`,
+        clientId: enquiry.clientId,
+        enquiryId: enquiry.id,
+        assignedToId: enquiry.assignedTo || "",
+        subject,
         description: "",
         type: "call",
-        priority: created.priority,
-        scheduledAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+        priority: enquiry.priority,
+        scheduledAt: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
         notes: "",
         reminder: false,
       });
     } catch (error) {
       toast.warning(
-        `Enquiry created, but the initial follow-up could not be created: ${getFollowUpErrorMessage(error)}`,
+        `Enquiry moved to Quotation Sent, but the quotation follow-up could not be created: ${getFollowUpErrorMessage(error)}`,
       );
     }
-    await loadEnquiries();
-  };
+  }, []);
 
   /**
    * Persists a stage change the Kanban board has already applied optimistically.
@@ -253,6 +371,13 @@ export function EnquiriesContent() {
         const updated = await updateEnquiryStage(id, newStage);
         setEnquiries((prev) => prev.map((e) => (e.id === id ? updated : e)));
         setSelectedEnquiry((prev) => (prev?.id === id ? updated : prev));
+        // Only on a genuine transition into quotation-sent — both existing
+        // callers (Kanban drop, Actions "Move to" item) already guarantee
+        // newStage !== previousStage, so this additionally guards against
+        // ever firing on a no-op "save while already quotation-sent".
+        if (newStage === "quotation-sent" && previousStage !== "quotation-sent") {
+          await ensureQuotationFollowUp(updated);
+        }
       } catch (error) {
         setEnquiries((prev) =>
           prev.map((e) => (e.id === id ? { ...e, stage: previousStage } : e)),
@@ -260,7 +385,7 @@ export function EnquiriesContent() {
         handleApiError(error, "Couldn't move that enquiry.");
       }
     },
-    [handleApiError],
+    [handleApiError, ensureQuotationFollowUp],
   );
 
   const handleStageChange = useCallback(
@@ -304,6 +429,32 @@ export function EnquiriesContent() {
       handleApiError(error, "Couldn't mark that enquiry as lost.");
     } finally {
       setIsSavingStage(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!enquiryToDelete) return;
+    setIsDeleting(true);
+    setDeleteError("");
+    try {
+      await deleteEnquiry(enquiryToDelete.id);
+      toast.success(`${enquiryToDelete.title} has been permanently deleted`);
+      setEnquiries((prev) => prev.filter((e) => e.id !== enquiryToDelete.id));
+      setEnquiryToDelete(null);
+      // Close the detail dialog if the deleted enquiry is the one open.
+      if (selectedEnquiry?.id === enquiryToDelete.id) {
+        setIsDetailOpen(false);
+        setSelectedEnquiry(null);
+      }
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        handleUnauthorized();
+        return;
+      }
+      // Keep the enquiry and the dialog usable rather than closing on error.
+      setDeleteError(getEnquiryErrorMessage(error));
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -575,6 +726,11 @@ export function EnquiriesContent() {
           if (!selectedEnquiry) return;
           handleStageChange(selectedEnquiry.id, stage, selectedEnquiry.stage);
         }}
+        onDelete={(enquiry) => {
+          setDeleteError("");
+          setEnquiryToDelete(enquiry);
+        }}
+        canDelete={canDelete}
       />
 
       {isFormOpen && (
@@ -625,6 +781,28 @@ export function EnquiriesContent() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Delete Confirmation. The description makes the FK-safe but
+          user-visible consequence explicit: quotations/follow-ups raised
+          from this enquiry are never deleted, only unlinked. */}
+      <ConfirmationDialog
+        open={!!enquiryToDelete}
+        onOpenChange={(open) => {
+          if (!open && !isDeleting) {
+            setEnquiryToDelete(null);
+            setDeleteError("");
+          }
+        }}
+        title="Delete this enquiry?"
+        description={
+          deleteError ||
+          `Are you sure you want to permanently delete "${enquiryToDelete?.title}"? Related quotations and follow-ups will remain but will no longer be linked to this enquiry.`
+        }
+        confirmLabel="Delete"
+        variant="destructive"
+        loading={isDeleting}
+        onConfirm={handleDelete}
+      />
     </div>
   );
 }

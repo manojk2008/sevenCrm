@@ -14,7 +14,7 @@ import {
   MinLength,
   ValidateIf,
 } from 'class-validator';
-import { EnquirySource, EnquiryStage, Priority } from '../../../generated/prisma/enums';
+import { EnquiryStage, Priority } from '../../../generated/prisma/enums';
 
 // Deliberately excludes organizationId (must come from the session, see
 // EnquiriesService.create) and createdAt/updatedAt (system-managed).
@@ -53,8 +53,14 @@ export class CreateEnquiryDto {
   @IsEnum(Priority)
   priority!: Priority;
 
-  @IsEnum(EnquirySource)
-  source!: EnquirySource;
+  // Optional — the caller may create an enquiry without a lead source.
+  // Verified by the service to reference an EnquirySource in the caller's
+  // organization; never trusted from the id alone (same precedent as
+  // clientId/assignedToId below).
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  sourceId?: string;
 
   @IsOptional()
   @IsString()

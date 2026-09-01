@@ -13,7 +13,7 @@ import {
   Min,
   MinLength,
 } from 'class-validator';
-import { EnquirySource, Priority } from '../../../generated/prisma/enums';
+import { Priority } from '../../../generated/prisma/enums';
 
 // Intentionally excludes id, organizationId, createdAt and updatedAt — none
 // are ever client-settable. `stage`/`lostReason` are also excluded: stage
@@ -49,9 +49,12 @@ export class UpdateEnquiryDto {
   @IsEnum(Priority)
   priority?: Priority;
 
+  // null explicitly clears the source; undefined (key absent) leaves it
+  // untouched — same three-way convention as assignedToId below.
   @IsOptional()
-  @IsEnum(EnquirySource)
-  source?: EnquirySource;
+  @IsString()
+  @MinLength(1)
+  sourceId?: string | null;
 
   @IsOptional()
   @IsString()

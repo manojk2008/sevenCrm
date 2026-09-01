@@ -159,17 +159,18 @@ model Organization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users          User[]
-  clients        Client[]
-  enquiries      Enquiry[]
-  products       Product[]
-  productGroups  ProductGroup[]
-  quotations     Quotation[]
-  followUps      FollowUp[]
-  tasks          Task[]
-  auditLogs      AuditLog[]
-  taxRates       TaxRate[]
-  emailTemplates EmailTemplate[]
+  users           User[]
+  clients         Client[]
+  enquiries       Enquiry[]
+  enquirySources  EnquirySource[]
+  products        Product[]
+  productGroups   ProductGroup[]
+  quotations      Quotation[]
+  followUps       FollowUp[]
+  tasks           Task[]
+  auditLogs       AuditLog[]
+  taxRates        TaxRate[]
+  emailTemplates  EmailTemplate[]
 
   @@map("organization")
 }
@@ -278,7 +279,16 @@ model Enquiry {
   expectedRevenue   Decimal       @db.Decimal(14, 2)
   probability       Int
   priority          Priority
-  source            EnquirySource
+
+  // Optional, organization-scoped lead source — see EnquirySource below.
+  // Nullable FK -> SetNull (same pattern as assignedToId above): removing a
+  // source must never block that removal, and the enquiry survives with
+  // sourceId cleared rather than being destroyed. Must be validated at the
+  // service layer to belong to the same organizationId as the enquiry —
+  // Prisma/Postgres cannot express a tenant-scoped FK here.
+  sourceId String?
+  source   EnquirySource? @relation(fields: [sourceId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
   description       String?
   notes             String?
   expectedCloseDate DateTime
@@ -313,8 +323,39 @@ model Enquiry {
   @@index([organizationId, clientId])
   @@index([organizationId, priority])
   @@index([assignedToId])
+  @@index([sourceId])
   @@index([organizationId, expectedCloseDate])
   @@map("enquiry")
+}
+
+// An organization-defined lead source (e.g. "Google Ads", "Trade Show",
+// "Referral Partner") — replaces the old fixed EnquirySource enum with a
+// persistent, user-creatable list. Deliberately minimal (no status field,
+// unlike ProductGroup/TaxRate): there is no deactivate/reactivate lifecycle
+// requirement for a source, only create-and-list, per the approved scope.
+model EnquirySource {
+  id String @id @default(cuid())
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  name String
+
+  // Back-relation for Enquiry.sourceId (SetNull) — a source that still has
+  // enquiries pointing at it is never blocked from anything by this
+  // relation alone; there is no delete endpoint for a source in this phase.
+  enquiries Enquiry[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Case-sensitive at the database level — duplicate detection is
+  // case-insensitive and enforced at the service layer (see
+  // EnquirySourcesService.create), the same division of responsibility
+  // ProductGroup/TaxRate use for their own @@unique([organizationId, name]).
+  @@unique([organizationId, name])
+  @@index([organizationId])
+  @@map("enquiry_source")
 }
 
 model ProductGroup {
@@ -618,6 +659,19 @@ model FollowUp {
   // no reminder *offset* is stored, because none is delivered.
   reminder Boolean @default(false)
 
+  // True only for the single Follow-up an Enquiry's Next-follow-up-date
+  // automatically manages (see ensureNextFollowUp in enquiries-content.tsx /
+  // clients-content.tsx). Never client-settable through the normal
+  // create/update DTOs — set exclusively by FollowUpsService's internal
+  // auto-managed create path — so the manual Follow-up form, which has no
+  // control for it, can never produce true through ordinary use. This is
+  // what makes it a safe identity marker where a subject-text convention
+  // was not: unlike subject/description/notes/etc., it is never something a
+  // real user types. Distinct from the Quotation Sent Follow-up, which
+  // continues to use its own subject convention untouched and is never
+  // marked true by this flag.
+  isAutoManaged Boolean @default(false)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -857,18 +911,6 @@ enum EnquiryStage {
   NEGOTIATION
   WON
   LOST
-}
-
-enum EnquirySource {
-  WEBSITE
-  REFERRAL
-  COLD_CALL
-  SOCIAL_MEDIA
-  EMAIL
-  TRADE_SHOW
-  ADVERTISEMENT
-  PARTNER
-  OTHER
 }
 
 // No existing backend representation of priority (frontend-only, and used
