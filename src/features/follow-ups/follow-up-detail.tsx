@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { format } from "date-fns";
 import {
   AlertTriangle,
@@ -19,6 +20,7 @@ import {
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { FollowUpHistory } from "./follow-up-history";
 import type { FollowUp, FollowUpType } from "@/types/follow-up";
 
 const TYPE_ICONS: Record<FollowUpType, React.ComponentType<{ className?: string }>> = {
@@ -176,13 +178,19 @@ export function FollowUpDetail({
             </Field>
             <Field label="Enquiry">
               {/* The real linked Enquiry, resolved by the backend — never a
-                  fabricated reference number. */}
+                  fabricated reference number. Navigable: opens the Enquiry's
+                  own detail dialog on the Enquiries page (see the
+                  `?enquiryId=` handling in enquiries-content.tsx), same
+                  precedent as the Dashboard's `?stage=` links. */}
               <Value>
                 {followUp.enquiry ? (
-                  <span className="flex items-center gap-2">
-                    <FileText className="h-4 w-4 text-muted-foreground" />
+                  <Link
+                    href={`/enquiries?enquiryId=${followUp.enquiry.id}`}
+                    className="flex items-center gap-2 text-indigo-600 hover:underline dark:text-indigo-400"
+                  >
+                    <FileText className="h-4 w-4" />
                     {followUp.enquiry.title}
-                  </span>
+                  </Link>
                 ) : null}
               </Value>
             </Field>
@@ -223,6 +231,15 @@ export function FollowUpDetail({
               <Value>{followUp.outcome}</Value>
             </p>
           </Field>
+
+          {/* What happened before (and after) this Follow-up for the same
+              Enquiry — omitted entirely for a Follow-up with no linked
+              Enquiry, same as the field above. */}
+          {followUp.enquiry && (
+            <Field label="Follow-up history for this Enquiry">
+              <FollowUpHistory enquiryId={followUp.enquiry.id} currentFollowUpId={followUp.id} />
+            </Field>
+          )}
 
           <div className="grid grid-cols-2 gap-4 border-t pt-4 text-xs text-muted-foreground">
             <div>Created {format(new Date(followUp.createdAt), "dd MMM yyyy, h:mm a")}</div>

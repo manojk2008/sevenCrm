@@ -1,4 +1,4 @@
-import { IsEnum, IsString, MaxLength, MinLength, ValidateIf } from 'class-validator';
+import { IsEnum, IsOptional, IsString, MaxLength, MinLength, ValidateIf } from 'class-validator';
 import { FollowUpStatus } from '../../../generated/prisma/enums';
 
 // The only way a follow-up's status ever changes.
@@ -21,4 +21,15 @@ export class UpdateFollowUpStatusDto {
   @MinLength(1)
   @MaxLength(5000)
   outcome?: string;
+
+  // Optional, organization-scoped business label recorded alongside this
+  // status change (see FollowUpStatusOption) — purely descriptive, never
+  // read by the logic above. `status` is always the caller-supplied
+  // internal value, exactly as before; this field never derives or
+  // overrides it. Verified by the service to belong to the caller's
+  // organization and be ACTIVE before being attached.
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  customStatusId?: string;
 }

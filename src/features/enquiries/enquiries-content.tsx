@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Plus, LayoutGrid, Table as TableIcon, Filter, Search, TrendingUp } from "lucide-react";
 import { toast } from "sonner";
@@ -25,13 +25,11 @@ import { ErrorState } from "@/components/shared/error-state";
 import { TableSkeleton } from "@/components/shared/skeleton-loader";
 import { EnquiryForm } from "./enquiry-form";
 import { EnquiryDetail } from "./enquiry-detail";
+import { ensureNextFollowUp } from "./follow-up-sync";
 import {
-  createFollowUp,
-  createAutoManagedFollowUp,
-  updateFollowUp,
-  listFollowUps,
-  getFollowUpErrorMessage,
-} from "@/features/follow-ups/api";
+  FollowUpTransitionDialog,
+  type FollowUpTransitionValues,
+} from "./follow-up-transition-dialog";
 import { Enquiry, ENQUIRY_STAGES } from "@/types/enquiry";
 import type { EnquiryStage } from "@/types/enquiry";
 import type { Priority } from "@/types/common";
@@ -48,6 +46,12 @@ import {
   getEnquiryErrorMessage,
   type EnquiryFormValues,
 } from "./api";
+import {
+  listFollowUps,
+  updateFollowUp,
+  updateFollowUpStatus,
+  createAutoManagedFollowUp,
+} from "@/features/follow-ups/api";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -127,6 +131,13 @@ export function EnquiriesContent() {
   const [lostReasonInput, setLostReasonInput] = useState("");
   const [isSavingStage, setIsSavingStage] = useState(false);
 
+  // Pending Follow-up-1->2 / Follow-up-2->3 transition awaiting the
+  // FollowUpTransitionDialog. Same rollback contract as pendingLost:
+  // `previousStage` is what the card is rolled back to on Cancel/failure.
+  const [pendingFollowUpTransition, setPendingFollowUpTransition] = useState<
+    { enquiry: Enquiry; fromStage: "follow-up-1" | "follow-up-2"; previousStage: EnquiryStage } | null
+  >(null);
+
   const [enquiryToDelete, setEnquiryToDelete] = useState<Enquiry | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState("");
@@ -204,88 +215,46 @@ export function EnquiriesContent() {
   // The list only carries what the card/row needs; the detail dialog needs
   // the full record (e.g. products/description), so it fetches it and only
   // opens once that finishes rather than opening with a stale snapshot.
-  const handleEnquiryClick = async (enquiry: Enquiry) => {
-    if (loadingEnquiryId) return;
-    setLoadingEnquiryId(enquiry.id);
-    try {
-      const full = await getEnquiry(enquiry.id);
-      setSelectedEnquiry(full);
-      setIsDetailOpen(true);
-    } catch (error) {
-      handleApiError(error, "Couldn't load that enquiry.");
-    } finally {
-      setLoadingEnquiryId(null);
-    }
-  };
-
-  /**
-   * Keeps exactly one *active* (isAutoManaged, status scheduled) automatic
-   * Follow-up in sync with the Enquiry's Next Follow-up date — used after
-   * both create and edit. Identified purely by the isAutoManaged flag (see
-   * FollowUp.isAutoManaged in schema.prisma) — never by subject text, so a
-   * manually-created Follow-up (even one literally titled
-   * "Follow up: <same title>") can never be mistaken for it. Distinct from,
-   * and never touches, ensureQuotationFollowUp's Follow-up, which is not
-   * isAutoManaged and keeps using its own separate subject convention.
-   *
-   * listFollowUps({ enquiryId, isAutoManaged: true }) is the existence
-   * check that makes this safe to call on every save: reopening/
-   * refreshing/re-editing the Enquiry, or saving without changing the date,
-   * all find the same scheduled match and update it in place rather than
-   * creating another. A Follow-up the user has already marked Completed/
-   * Cancelled is deliberately excluded from the match (status !==
-   * "scheduled") and left untouched as history — a new Scheduled one is
-   * created instead, which is also why updateFollowUp() below is never
-   * given a status to change; that endpoint doesn't accept one anyway
-   * (status only ever changes through updateFollowUpStatus, used by the
-   * Follow-ups page itself). The new one still goes through
-   * createAutoManagedFollowUp, so it too carries isAutoManaged: true.
-   */
-  const ensureNextFollowUp = useCallback(async (enquiry: Enquiry) => {
-    if (!enquiry.expectedCloseDate) return;
-    const subject = `Follow up: ${enquiry.title}`;
-
-    try {
-      const existing = await listFollowUps({
-        enquiryId: enquiry.id,
-        isAutoManaged: true,
-        pageSize: 100,
-      });
-      const match = existing.data.find((followUp) => followUp.status === "scheduled");
-
-      if (match) {
-        await updateFollowUp(match.id, {
-          clientId: enquiry.clientId,
-          enquiryId: enquiry.id,
-          assignedToId: enquiry.assignedTo || "",
-          subject,
-          description: match.description ?? "",
-          type: match.type,
-          priority: enquiry.priority,
-          scheduledAt: enquiry.expectedCloseDate,
-          notes: match.notes ?? "",
-          reminder: match.reminder,
-        });
-      } else {
-        await createAutoManagedFollowUp({
-          clientId: enquiry.clientId,
-          enquiryId: enquiry.id,
-          assignedToId: enquiry.assignedTo || "",
-          subject,
-          description: "",
-          type: "call",
-          priority: enquiry.priority,
-          scheduledAt: enquiry.expectedCloseDate,
-          notes: "",
-          reminder: false,
-        });
+  // Extracted from the card-click handler below so the `?enquiryId=` deep
+  // link (a Follow-up detail's "View Enquiry" link) can open the same way.
+  const openEnquiryById = useCallback(
+    async (id: string) => {
+      if (loadingEnquiryId) return;
+      setLoadingEnquiryId(id);
+      try {
+        const full = await getEnquiry(id);
+        setSelectedEnquiry(full);
+        setIsDetailOpen(true);
+      } catch (error) {
+        handleApiError(error, "Couldn't load that enquiry.");
+      } finally {
+        setLoadingEnquiryId(null);
       }
-    } catch (error) {
-      toast.warning(
-        `Enquiry saved, but the follow-up could not be synced: ${getFollowUpErrorMessage(error)}`,
-      );
-    }
-  }, []);
+    },
+    [loadingEnquiryId, handleApiError],
+  );
+
+  const handleEnquiryClick = (enquiry: Enquiry) => openEnquiryById(enquiry.id);
+
+  // Opens the linked Enquiry directly when arriving via `?enquiryId=` (a
+  // Follow-up detail's "View Enquiry" link) — mirrors the existing `?stage=`
+  // param precedent above. Read once via a ref guard, not the initializer
+  // pattern `stageFilter` uses, because opening a dialog is an action (not a
+  // filter default) and must not repeat on every re-render or after the
+  // user closes the dialog themselves.
+  const openedFromEnquiryIdParam = useRef(false);
+  useEffect(() => {
+    if (openedFromEnquiryIdParam.current) return;
+    const id = searchParams.get("enquiryId");
+    if (!id) return;
+    openedFromEnquiryIdParam.current = true;
+    // Deferred via .then() rather than called directly — calling a function
+    // that sets state as a bare statement in an effect body runs its
+    // setState synchronously within the effect's own flush, which is what
+    // react-hooks/set-state-in-effect flags. Same pattern as loadEnquiries
+    // below.
+    Promise.resolve().then(() => openEnquiryById(id));
+  }, [searchParams, openEnquiryById]);
 
   const handleSubmitForm = async (values: EnquiryFormValues) => {
     if (editingEnquiry) {
@@ -293,11 +262,15 @@ export function EnquiriesContent() {
       setIsFormOpen(false);
       setEditingEnquiry(undefined);
       toast.success("Enquiry updated");
-      if (selectedEnquiry?.id === updated.id) setSelectedEnquiry(updated);
       // Keeps the Enquiry's Next Follow-up in sync — never a duplicate, see
       // ensureNextFollowUp's own doc comment. Run after the success toast so
       // a sync failure's warning reads as a follow-on, not a contradiction.
-      await ensureNextFollowUp(updated);
+      // Its return value (possibly stage-advanced — see follow-up-sync.ts)
+      // is what local state is updated from, not the pre-sync `updated`, so
+      // an open detail dialog reflects an automatic Follow-up 1->2/2->3
+      // stage advance immediately rather than only after a reload.
+      const synced = await ensureNextFollowUp(updated);
+      if (selectedEnquiry?.id === synced.id) setSelectedEnquiry(synced);
       await loadEnquiries();
       return;
     }
@@ -316,51 +289,6 @@ export function EnquiriesContent() {
   };
 
   /**
-   * Second automatic Follow-up (distinct from the initial one created on
-   * Enquiry creation — see handleSubmitForm): fired only when an Enquiry
-   * actually transitions into "quotation-sent" (see persistStageChange), so
-   * the sales executive is prompted to follow up on the quotation itself —
-   * when to re-contact the client, what feedback came back, and the next
-   * action — using the existing Follow-up form/detail, never a new system.
-   *
-   * The subject is the duplicate-prevention marker (same "subject as
-   * implicit identity" convention the initial Follow-up already relies on,
-   * rather than a new field/type): before creating, this checks whether a
-   * Follow-up with that exact subject already exists for the enquiry via
-   * the existing listFollowUps({ enquiryId }) filter, and does nothing if
-   * so. That single check is what makes re-saving the enquiry, reopening
-   * it, refreshing, or leaving-and-returning to quotation-sent all safe —
-   * none of those can produce a second quotation Follow-up. A failure in
-   * either the existence check or the creation itself is reported as a
-   * warning rather than rolling back the (already-successful) stage change,
-   * matching the initial Follow-up's own failure handling.
-   */
-  const ensureQuotationFollowUp = useCallback(async (enquiry: Enquiry) => {
-    const subject = `Follow up on quotation: ${enquiry.title}`;
-    try {
-      const existing = await listFollowUps({ enquiryId: enquiry.id, pageSize: 100 });
-      if (existing.data.some((f) => f.subject === subject)) return;
-
-      await createFollowUp({
-        clientId: enquiry.clientId,
-        enquiryId: enquiry.id,
-        assignedToId: enquiry.assignedTo || "",
-        subject,
-        description: "",
-        type: "call",
-        priority: enquiry.priority,
-        scheduledAt: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
-        notes: "",
-        reminder: false,
-      });
-    } catch (error) {
-      toast.warning(
-        `Enquiry moved to Quotation Sent, but the quotation follow-up could not be created: ${getFollowUpErrorMessage(error)}`,
-      );
-    }
-  }, []);
-
-  /**
    * Persists a stage change the Kanban board has already applied optimistically.
    * On failure the card is rolled back to `previousStage`; there is no success
    * toast for a drag, since the card visibly moving is the confirmation.
@@ -371,13 +299,6 @@ export function EnquiriesContent() {
         const updated = await updateEnquiryStage(id, newStage);
         setEnquiries((prev) => prev.map((e) => (e.id === id ? updated : e)));
         setSelectedEnquiry((prev) => (prev?.id === id ? updated : prev));
-        // Only on a genuine transition into quotation-sent — both existing
-        // callers (Kanban drop, Actions "Move to" item) already guarantee
-        // newStage !== previousStage, so this additionally guards against
-        // ever firing on a no-op "save while already quotation-sent".
-        if (newStage === "quotation-sent" && previousStage !== "quotation-sent") {
-          await ensureQuotationFollowUp(updated);
-        }
       } catch (error) {
         setEnquiries((prev) =>
           prev.map((e) => (e.id === id ? { ...e, stage: previousStage } : e)),
@@ -385,7 +306,7 @@ export function EnquiriesContent() {
         handleApiError(error, "Couldn't move that enquiry.");
       }
     },
-    [handleApiError, ensureQuotationFollowUp],
+    [handleApiError],
   );
 
   const handleStageChange = useCallback(
@@ -397,9 +318,27 @@ export function EnquiriesContent() {
         setPendingLost({ id, previousStage });
         return;
       }
+      // Follow-up-1 -> Follow-up-2 and Follow-up-2 -> Follow-up-3 need the
+      // outgoing Follow-up's outcome and the incoming one's schedule before
+      // the stage actually moves — same "collect first" shape as LOST above.
+      const isFollowUpAdvance =
+        (previousStage === "follow-up-1" && newStage === "follow-up-2") ||
+        (previousStage === "follow-up-2" && newStage === "follow-up-3");
+      if (isFollowUpAdvance) {
+        const enquiry =
+          selectedEnquiry?.id === id ? selectedEnquiry : enquiries.find((e) => e.id === id);
+        if (enquiry) {
+          setPendingFollowUpTransition({
+            enquiry,
+            fromStage: previousStage as "follow-up-1" | "follow-up-2",
+            previousStage,
+          });
+          return;
+        }
+      }
       void persistStageChange(id, newStage, previousStage);
     },
-    [persistStageChange],
+    [persistStageChange, enquiries, selectedEnquiry],
   );
 
   const cancelLostTransition = () => {
@@ -409,6 +348,104 @@ export function EnquiriesContent() {
     );
     setPendingLost(null);
     setLostReasonInput("");
+  };
+
+  // Rolls the card back to its pre-drag stage — mirrors cancelLostTransition
+  // exactly. Used both for an explicit Cancel and for the dialog's own
+  // backdrop/Esc dismissal (guarded by isSaving inside the dialog itself).
+  const cancelFollowUpTransition = () => {
+    if (!pendingFollowUpTransition) return;
+    const { enquiry, previousStage } = pendingFollowUpTransition;
+    setEnquiries((prev) =>
+      prev.map((e) => (e.id === enquiry.id ? { ...e, stage: previousStage } : e)),
+    );
+    setPendingFollowUpTransition(null);
+  };
+
+  /**
+   * The actual save sequence for a Follow-up-stage transition, run in this
+   * strict order so the Enquiry's stage only ever moves after both
+   * Follow-up writes succeed. This is also the ONLY place either internal
+   * lifecycle value is decided — FollowUpTransitionDialog never collects or
+   * sends `status`, only the two optional, purely-descriptive
+   * `customStatusId` business labels:
+   *
+   *  1. Close out the outgoing Follow-up (if one was found) as COMPLETED —
+   *     fixed, not a user choice: this dialog's whole purpose is "record
+   *     what happened, then move on" (see its title, "Complete Follow-up
+   *     N"). Uses the same PATCH /follow-ups/:id/status the ordinary
+   *     Complete/Cancel actions on the Follow-ups page use, with the
+   *     existing outcome-required-on-COMPLETED validation intact.
+   *  2. Find-or-create the incoming Follow-up using the exact identity
+   *     convention ensureNextFollowUp uses (isAutoManaged + enquiryId +
+   *     status === "scheduled", never subject text) — re-checked here rather
+   *     than trusting what the dialog saw on open, so a concurrent change
+   *     can never produce a duplicate scheduled auto-managed Follow-up. It
+   *     is always left SCHEDULED (create's own default; update never
+   *     touches status) — again fixed, never a user choice.
+   *  3. Advance the stage.
+   *
+   * A failure at any step throws back to the dialog (which shows it inline
+   * and keeps the user's input) and this function never reaches the stage
+   * update — the Kanban card stays wherever the dialog's own Cancel/failure
+   * path rolls it back to.
+   */
+  const submitFollowUpTransition = async (values: FollowUpTransitionValues) => {
+    if (!pendingFollowUpTransition) return;
+    const { enquiry, fromStage } = pendingFollowUpTransition;
+    const toStage = fromStage === "follow-up-1" ? "follow-up-2" : "follow-up-3";
+
+    if (values.currentFollowUpId) {
+      await updateFollowUpStatus(
+        values.currentFollowUpId,
+        "completed",
+        values.currentOutcome,
+        values.currentCustomStatusId ?? undefined,
+      );
+    }
+
+    const subject = `Follow up: ${enquiry.title}`;
+    const existing = await listFollowUps({
+      enquiryId: enquiry.id,
+      isAutoManaged: true,
+      pageSize: 100,
+    });
+    const stillScheduled = existing.data.find((f) => f.status === "scheduled");
+
+    if (stillScheduled) {
+      await updateFollowUp(stillScheduled.id, {
+        clientId: enquiry.clientId,
+        enquiryId: enquiry.id,
+        assignedToId: enquiry.assignedTo || "",
+        subject,
+        description: stillScheduled.description ?? "",
+        type: stillScheduled.type,
+        priority: enquiry.priority,
+        scheduledAt: values.nextScheduledAt,
+        notes: stillScheduled.notes ?? "",
+        reminder: stillScheduled.reminder,
+        customStatusId: values.nextCustomStatusId ?? "",
+      });
+    } else {
+      await createAutoManagedFollowUp({
+        clientId: enquiry.clientId,
+        enquiryId: enquiry.id,
+        assignedToId: enquiry.assignedTo || "",
+        subject,
+        description: "",
+        type: "call",
+        priority: enquiry.priority,
+        scheduledAt: values.nextScheduledAt,
+        notes: "",
+        reminder: false,
+        customStatusId: values.nextCustomStatusId ?? undefined,
+      });
+    }
+
+    const updated = await updateEnquiryStage(enquiry.id, toStage);
+    setEnquiries((prev) => prev.map((e) => (e.id === updated.id ? updated : e)));
+    setSelectedEnquiry((prev) => (prev?.id === updated.id ? updated : prev));
+    setPendingFollowUpTransition(null);
   };
 
   const confirmLostTransition = async () => {
@@ -781,6 +818,19 @@ export function EnquiriesContent() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Follow-up-1 -> 2 / Follow-up-2 -> 3: collects the outgoing
+          Follow-up's outcome and the incoming one's schedule before the
+          stage actually moves. Mounted only while pending, same convention
+          as EnquiryForm above. */}
+      {pendingFollowUpTransition && (
+        <FollowUpTransitionDialog
+          enquiry={pendingFollowUpTransition.enquiry}
+          fromStage={pendingFollowUpTransition.fromStage}
+          onCancel={cancelFollowUpTransition}
+          onSubmit={submitFollowUpTransition}
+        />
+      )}
 
       {/* Delete Confirmation. The description makes the FK-safe but
           user-visible consequence explicit: quotations/follow-ups raised

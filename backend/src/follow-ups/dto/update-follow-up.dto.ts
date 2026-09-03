@@ -36,6 +36,15 @@ export class UpdateFollowUpDto {
   @MinLength(1)
   assignedToId?: string | null;
 
+  // null explicitly clears the business label; undefined (key absent)
+  // leaves it untouched. A non-null value is re-validated by the service
+  // (caller's organization, ACTIVE) — see FollowUpStatusOption. Purely
+  // descriptive: never touches `status`.
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  customStatusId?: string | null;
+
   @IsOptional()
   @IsString()
   @MinLength(1)

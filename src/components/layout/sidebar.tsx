@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useSidebarStore } from "@/stores/sidebar-store";
 import { useAuthStore } from "@/stores/auth-store";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { getScheduledFollowUpsCount } from "@/features/follow-ups/api";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import type { LucideIcon } from "lucide-react";
@@ -30,7 +31,6 @@ type NavItem = {
   label: string;
   href: string;
   icon: LucideIcon;
-  badge?: string;
 };
 
 type NavSection = {
@@ -50,7 +50,7 @@ const NAV_SECTIONS: NavSection[] = [
       { label: "Clients", href: "/clients", icon: Building2 },
       { label: "Products", href: "/products", icon: Package },
       { label: "Enquiries", href: "/enquiries", icon: TrendingUp },
-      { label: "Follow-ups", href: "/follow-ups", icon: CalendarClock, badge: "3" },
+      { label: "Follow-ups", href: "/follow-ups", icon: CalendarClock },
     ],
   },
   {
@@ -114,9 +114,17 @@ function Brand({ collapsed }: { collapsed: boolean }) {
 function SidebarNav({
   collapsed,
   onNavigate,
+  badges,
 }: {
   collapsed: boolean;
   onNavigate?: () => void;
+  /**
+   * Dynamic per-item badge text, keyed by href. Nothing in `NAV_SECTIONS` is
+   * hardcoded — a missing key (still loading, or an item with no badge at
+   * all) simply renders no badge, rather than a static placeholder that can
+   * drift from the real data.
+   */
+  badges?: Record<string, string>;
 }) {
   const pathname = usePathname();
 
@@ -132,6 +140,7 @@ function SidebarNav({
           {section.items.map((item) => {
             const isActive = pathname.startsWith(item.href);
             const Icon = item.icon;
+            const badge = badges?.[item.href];
 
             const navItem = (
               <Link
@@ -157,9 +166,9 @@ function SidebarNav({
                   )}
                 />
                 {!collapsed && <span className="flex-1 truncate">{item.label}</span>}
-                {!collapsed && item.badge && (
+                {!collapsed && badge && (
                   <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[11px] font-medium text-primary-foreground">
-                    {item.badge}
+                    {badge}
                   </span>
                 )}
               </Link>
@@ -170,9 +179,7 @@ function SidebarNav({
                 <TooltipTrigger render={navItem} />
                 <TooltipContent side="right" className="flex items-center gap-2">
                   {item.label}
-                  {item.badge && (
-                    <span className="ml-auto text-muted-foreground">({item.badge})</span>
-                  )}
+                  {badge && <span className="ml-auto text-muted-foreground">({badge})</span>}
                 </TooltipContent>
               </Tooltip>
             ) : (
@@ -213,11 +220,40 @@ function SidebarUser({ collapsed }: { collapsed: boolean }) {
 export default function Sidebar() {
   const { isCollapsed, toggle, isMobileOpen, closeMobile } = useSidebarStore();
   const pathname = usePathname();
+  const [followUpsCount, setFollowUpsCount] = useState<number | null>(null);
 
   // Navigating from inside the sheet should dismiss it.
   useEffect(() => {
     closeMobile();
   }, [pathname, closeMobile]);
+
+  // Refetched on every navigation (not just on mount) so leaving the
+  // Follow-ups page after creating/completing/cancelling one — or a fresh
+  // page load, since this also runs on mount — picks up the change without
+  // requiring a manual refresh. Silent on failure: a missing badge is a
+  // reasonable degradation, and every page that actually depends on
+  // follow-up data has its own loading/error state already.
+  useEffect(() => {
+    let cancelled = false;
+    getScheduledFollowUpsCount()
+      .then((count) => {
+        if (!cancelled) setFollowUpsCount(count);
+      })
+      .catch(() => {
+        // Intentionally silent — see above.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [pathname]);
+
+  // Hidden until loaded, and hidden at zero — same convention as
+  // NotificationBell's badge — rather than ever showing a stale or
+  // placeholder number.
+  const badges: Record<string, string> =
+    followUpsCount !== null && followUpsCount > 0
+      ? { "/follow-ups": String(followUpsCount) }
+      : {};
 
   return (
     <>
@@ -233,7 +269,7 @@ export default function Sidebar() {
         </div>
 
         <div className="scrollbar-thin flex-1 overflow-y-auto overflow-x-hidden py-4">
-          <SidebarNav collapsed={isCollapsed} />
+          <SidebarNav collapsed={isCollapsed} badges={badges} />
         </div>
 
         <SidebarUser collapsed={isCollapsed} />
@@ -269,7 +305,7 @@ export default function Sidebar() {
           </div>
 
           <div className="scrollbar-thin flex-1 overflow-y-auto overflow-x-hidden py-4">
-            <SidebarNav collapsed={false} onNavigate={closeMobile} />
+            <SidebarNav collapsed={false} onNavigate={closeMobile} badges={badges} />
           </div>
 
           <SidebarUser collapsed={false} />

@@ -19,9 +19,9 @@ const ACTIVITY_FETCH_PER_SOURCE = 50;
 const OPEN_ENQUIRY_STAGES: EnquiryStage[] = [
   EnquiryStage.NEW,
   EnquiryStage.CONTACTED,
-  EnquiryStage.FOLLOW_UP,
-  EnquiryStage.QUOTATION_SENT,
-  EnquiryStage.NEGOTIATION,
+  EnquiryStage.FOLLOW_UP_1,
+  EnquiryStage.FOLLOW_UP_2,
+  EnquiryStage.FOLLOW_UP_3,
 ];
 
 export interface SafeDashboardSummary {

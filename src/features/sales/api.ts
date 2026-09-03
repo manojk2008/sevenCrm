@@ -36,9 +36,9 @@ type BackendQuotationStatus = "DRAFT" | "SENT" | "ACCEPTED" | "REJECTED" | "EXPI
 type BackendEnquiryStage =
   | "NEW"
   | "CONTACTED"
-  | "FOLLOW_UP"
-  | "QUOTATION_SENT"
-  | "NEGOTIATION"
+  | "FOLLOW_UP_1"
+  | "FOLLOW_UP_2"
+  | "FOLLOW_UP_3"
   | "WON"
   | "LOST";
 
@@ -126,9 +126,9 @@ const QUOTATION_STATUS_FROM_BACKEND: Record<BackendQuotationStatus, QuotationSta
 const ENQUIRY_STAGE_FROM_BACKEND: Record<BackendEnquiryStage, EnquiryStage> = {
   NEW: "new",
   CONTACTED: "contacted",
-  FOLLOW_UP: "follow-up",
-  QUOTATION_SENT: "quotation-sent",
-  NEGOTIATION: "negotiation",
+  FOLLOW_UP_1: "follow-up-1",
+  FOLLOW_UP_2: "follow-up-2",
+  FOLLOW_UP_3: "follow-up-3",
   WON: "won",
   LOST: "lost",
 };

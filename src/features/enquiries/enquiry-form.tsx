@@ -396,8 +396,9 @@ export function EnquiryForm({ open, onOpenChange, enquiry, onSubmit, initialClie
                 {/* User-facing label only — this still drives the
                     `expectedCloseDate` field/API/DB column unchanged. It now
                     controls the Enquiry's automatically-synchronized Follow-up
-                    (see ensureNextFollowUp in enquiries-content.tsx /
-                    clients-content.tsx) rather than a deal-closing estimate. */}
+                    (see ensureNextFollowUp in
+                    src/features/enquiries/follow-up-sync.ts) rather than a
+                    deal-closing estimate. */}
                 <Label htmlFor="enq-close-date">Next follow-up date *</Label>
                 <Input
                   id="enq-close-date"

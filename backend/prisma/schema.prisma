@@ -159,18 +159,19 @@ model Organization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users           User[]
-  clients         Client[]
-  enquiries       Enquiry[]
-  enquirySources  EnquirySource[]
-  products        Product[]
-  productGroups   ProductGroup[]
-  quotations      Quotation[]
-  followUps       FollowUp[]
-  tasks           Task[]
-  auditLogs       AuditLog[]
-  taxRates        TaxRate[]
-  emailTemplates  EmailTemplate[]
+  users                 User[]
+  clients               Client[]
+  enquiries             Enquiry[]
+  enquirySources        EnquirySource[]
+  products              Product[]
+  productGroups         ProductGroup[]
+  quotations            Quotation[]
+  followUps             FollowUp[]
+  followUpStatusOptions FollowUpStatusOption[]
+  tasks                 Task[]
+  auditLogs             AuditLog[]
+  taxRates              TaxRate[]
+  emailTemplates        EmailTemplate[]
 
   @@map("organization")
 }
@@ -672,6 +673,22 @@ model FollowUp {
   // marked true by this flag.
   isAutoManaged Boolean @default(false)
 
+  // Organization-customizable business label (e.g. "Customer Interested",
+  // "Proposal Sent") — deliberately independent of `status` above. `status`
+  // remains the sole internal lifecycle field driving every existing system
+  // behavior (overdue, completedAt, outcome-required, the auto-managed
+  // sequence); this FK carries no lifecycle meaning of its own and is never
+  // read by any of that logic. Nullable + SetNull (same pattern as
+  // Enquiry.sourceId): removing the option must never block that removal —
+  // though in practice there is no delete endpoint for a
+  // FollowUpStatusOption at all, only deactivate, so SetNull is currently
+  // unreachable in normal operation and exists for schema-level safety.
+  // Auto-managed Follow-ups (see isAutoManaged above) are deliberately never
+  // required to carry one — ensureNextFollowUp never sets it, and the
+  // automatic Follow-up 1/2/3 sequence has no dependency on it whatsoever.
+  customStatusId String?
+  customStatus   FollowUpStatusOption? @relation(fields: [customStatusId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -681,7 +698,50 @@ model FollowUp {
   @@index([organizationId, enquiryId])
   @@index([organizationId, priority])
   @@index([assignedToId])
+  @@index([customStatusId])
   @@map("follow_up")
+}
+
+// An organization-defined, purely descriptive business label for a
+// Follow-up (e.g. "Customer Interested", "Demo Scheduled", "Proposal Sent")
+// — replaces nothing: FollowUp.status (SCHEDULED/COMPLETED/CANCELLED)
+// remains the only internal lifecycle field and continues to be set by the
+// server exactly as before. A FollowUpStatusOption carries no lifecycle
+// meaning of its own (deliberately no field tying it to SCHEDULED/COMPLETED/
+// CANCELLED) — the two concepts are intentionally kept independent, per the
+// approved design: an organization decides its own labels without needing
+// to understand or configure the system's internal state machine.
+//
+// Same create/list-and-deactivate lifecycle as ProductGroup/TaxRate — no
+// delete endpoint (a FollowUp already using an option must never lose its
+// recorded label), only ACTIVE/INACTIVE. An organization starts with zero
+// rows; none are seeded, by design — there is no fixed starter set.
+model FollowUpStatusOption {
+  id String @id @default(cuid())
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  name   String
+  status FollowUpStatusOptionState @default(ACTIVE)
+
+  followUps FollowUp[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Case-sensitive at the database level — duplicate detection is
+  // case-insensitive and enforced at the service layer (see
+  // FollowUpStatusesService.create), same division of responsibility as
+  // EnquirySource/ProductGroup/TaxRate's own @@unique([organizationId, name]).
+  @@unique([organizationId, name])
+  @@index([organizationId, status])
+  @@map("follow_up_status_option")
+}
+
+enum FollowUpStatusOptionState {
+  ACTIVE
+  INACTIVE
 }
 
 // A generic personal/team to-do — deliberately independent of Client/Enquiry
@@ -906,9 +966,15 @@ enum ClientStatus {
 enum EnquiryStage {
   NEW
   CONTACTED
-  FOLLOW_UP
-  QUOTATION_SENT
-  NEGOTIATION
+  // Replaces the old singular FOLLOW_UP plus QUOTATION_SENT/NEGOTIATION: the
+  // pipeline now represents the sales conversation as three numbered
+  // Follow-up interactions instead. See the FollowUp model's isAutoManaged
+  // comment and ensureNextFollowUp (src/features/enquiries/follow-up-sync.ts)
+  // for how these three stages stay synchronized with the Enquiry's actual
+  // automatically-managed Follow-up.
+  FOLLOW_UP_1
+  FOLLOW_UP_2
+  FOLLOW_UP_3
   WON
   LOST
 }

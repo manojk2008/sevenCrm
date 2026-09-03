@@ -870,7 +870,7 @@ describe('Enquiry products (e2e)', () => {
     const staged = await request(app.getHttpServer())
       .patch(`/enquiries/${created.body.id}/stage`)
       .set('Cookie', cookies)
-      .send({ stage: 'NEGOTIATION' })
+      .send({ stage: 'FOLLOW_UP_1' })
       .expect(200);
     expect(attachedIds(staged.body)).toEqual([laterDeactivated.id]);
   }, 30000);

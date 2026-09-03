@@ -12,6 +12,7 @@ import { ProductGroupsModule } from './product-groups/product-groups.module';
 import { ProductsModule } from './products/products.module';
 import { QuotationsModule } from './quotations/quotations.module';
 import { FollowUpsModule } from './follow-ups/follow-ups.module';
+import { FollowUpStatusesModule } from './follow-up-statuses/follow-up-statuses.module';
 import { TasksModule } from './tasks/tasks.module';
 import { SalesModule } from './sales/sales.module';
 import { DashboardModule } from './dashboard/dashboard.module';
@@ -35,6 +36,7 @@ import { EmailTemplatesModule } from './email-templates/email-templates.module';
     ProductsModule,
     QuotationsModule,
     FollowUpsModule,
+    FollowUpStatusesModule,
     TasksModule,
     SalesModule,
     DashboardModule,

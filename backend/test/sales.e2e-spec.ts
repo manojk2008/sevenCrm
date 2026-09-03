@@ -705,7 +705,7 @@ describe('SalesController (e2e)', () => {
     expect(byStage.LOST.count).toBe(1);
     expect(byStage.NEW.count).toBe(1);
     // Zero-filled stages are present rather than omitted.
-    expect(byStage.NEGOTIATION.count).toBe(0);
+    expect(byStage.FOLLOW_UP_2.count).toBe(0);
   });
 
   it('12. declares the metrics the database cannot support instead of faking them', async () => {

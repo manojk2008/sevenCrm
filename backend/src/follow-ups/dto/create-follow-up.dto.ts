@@ -35,6 +35,15 @@ export class CreateFollowUpDto {
   @MinLength(1)
   assignedToId?: string;
 
+  // Optional, organization-scoped business label (see FollowUpStatusOption).
+  // Purely descriptive — never influences `status`, which always starts
+  // SCHEDULED regardless of whether this is set. Verified by the service to
+  // belong to the caller's organization and be ACTIVE before being attached.
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  customStatusId?: string;
+
   @IsString()
   @MinLength(1)
   @MaxLength(200)

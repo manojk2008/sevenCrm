@@ -8,7 +8,13 @@ import {
 } from '@nestjs/common';
 import { prisma } from '../auth/auth';
 import { Prisma } from '../../generated/prisma/client';
-import { FollowUpStatus, FollowUpType, Priority, UserRole } from '../../generated/prisma/enums';
+import {
+  FollowUpStatus,
+  FollowUpStatusOptionState,
+  FollowUpType,
+  Priority,
+  UserRole,
+} from '../../generated/prisma/enums';
 import type { AppSession } from '../auth/session.types';
 import { CreateFollowUpDto } from './dto/create-follow-up.dto';
 import { UpdateFollowUpDto } from './dto/update-follow-up.dto';
@@ -25,6 +31,10 @@ const FOLLOW_UP_INCLUDE = {
   client: { select: { id: true, companyName: true } },
   enquiry: { select: { id: true, title: true } },
   assignedTo: { select: { id: true, name: true, email: true } },
+  // Resolved live, like every other relation here — a renamed
+  // FollowUpStatusOption shows its current name immediately. Purely
+  // descriptive; never read by any of the lifecycle logic in this service.
+  customStatus: { select: { id: true, name: true } },
 } satisfies Prisma.FollowUpInclude;
 
 type FollowUpWithRelations = Prisma.FollowUpGetPayload<{ include: typeof FOLLOW_UP_INCLUDE }>;
@@ -48,6 +58,15 @@ export interface SafeFollowUp {
   outcome: string | null;
   notes: string | null;
   reminder: boolean;
+  /**
+   * Organization-customizable business label — purely descriptive, carries
+   * no lifecycle meaning of its own. `null` for a Follow-up nothing has
+   * ever set one on (including every auto-managed row — see isAutoManaged
+   * below). Resolved live from the FollowUpStatusOption relation, never
+   * denormalized.
+   */
+  customStatusId: string | null;
+  customStatus: { id: string; name: string } | null;
   /**
    * True only for the single Follow-up an Enquiry's Next-follow-up-date
    * automatically manages (see ensureNextFollowUp in the frontend). Never
@@ -114,6 +133,9 @@ export class FollowUpsService {
     if (dto.assignedToId) {
       await this.assertAssignedUserInOrg(dto.assignedToId, currentUser.organizationId);
     }
+    if (dto.customStatusId) {
+      await this.assertCustomStatusOptionUsable(dto.customStatusId, currentUser.organizationId);
+    }
 
     try {
       const created = await prisma.followUp.create({
@@ -124,6 +146,9 @@ export class FollowUpsService {
           clientId: dto.clientId,
           enquiryId: dto.enquiryId ?? null,
           assignedToId: dto.assignedToId ?? null,
+          // Never set by createAutoManaged's caller (ensureNextFollowUp) —
+          // stays null for every auto-managed row, exactly as required.
+          customStatusId: dto.customStatusId ?? null,
           subject: dto.subject,
           description: dto.description,
           type: dto.type,
@@ -250,6 +275,9 @@ export class FollowUpsService {
     if (dto.assignedToId !== undefined && dto.assignedToId !== null) {
       await this.assertAssignedUserInOrg(dto.assignedToId, currentUser.organizationId);
     }
+    if (dto.customStatusId !== undefined && dto.customStatusId !== null) {
+      await this.assertCustomStatusOptionUsable(dto.customStatusId, currentUser.organizationId);
+    }
 
     try {
       const updated = await prisma.followUp.update({
@@ -264,6 +292,7 @@ export class FollowUpsService {
           ...(dto.reminder !== undefined ? { reminder: dto.reminder } : {}),
           ...(dto.enquiryId !== undefined ? { enquiryId: dto.enquiryId } : {}),
           ...(dto.assignedToId !== undefined ? { assignedToId: dto.assignedToId } : {}),
+          ...(dto.customStatusId !== undefined ? { customStatusId: dto.customStatusId } : {}),
         },
         include: FOLLOW_UP_INCLUDE,
       });
@@ -281,7 +310,18 @@ export class FollowUpsService {
     this.assertCanUpdate(currentUser);
     const existing = await this.getOrgFollowUpOrThrow(id, currentUser);
 
-    const data: Prisma.FollowUpUpdateInput = { status: dto.status };
+    if (dto.customStatusId !== undefined) {
+      await this.assertCustomStatusOptionUsable(dto.customStatusId, currentUser.organizationId);
+    }
+
+    // `status` is always the caller-supplied internal value, exactly as
+    // before this field existed — customStatusId (if present) is recorded
+    // alongside it but never derives or overrides it. See
+    // UpdateFollowUpStatusDto's own doc comment.
+    const data: Prisma.FollowUpUpdateInput = {
+      status: dto.status,
+      ...(dto.customStatusId !== undefined ? { customStatusId: dto.customStatusId } : {}),
+    };
 
     if (dto.status === FollowUpStatus.COMPLETED) {
       // DTO validation (ValidateIf) already guarantees a non-empty string;
@@ -457,6 +497,32 @@ export class FollowUpsService {
     }
   }
 
+  /**
+   * Validates a customStatusId for a *new* attachment: must belong to the
+   * caller's organization and be ACTIVE — same "attach only if active"
+   * precedent as EnquiriesService.assertProductsAttachable. An option that
+   * is already attached to a Follow-up and has since been deactivated is
+   * never re-validated (it never reaches this method again unless the
+   * caller explicitly picks a *different* value), which is what lets a
+   * historical record keep its recorded label after the option retires.
+   */
+  private async assertCustomStatusOptionUsable(
+    customStatusId: string,
+    organizationId: string,
+  ): Promise<void> {
+    const option = await prisma.followUpStatusOption.findFirst({
+      where: { id: customStatusId, organizationId },
+    });
+    if (!option) {
+      throw new BadRequestException(
+        'customStatusId must reference a follow-up status in your organization.',
+      );
+    }
+    if (option.status === FollowUpStatusOptionState.INACTIVE) {
+      throw new BadRequestException('This follow-up status has been deactivated.');
+    }
+  }
+
   private async getOrgFollowUpOrThrow(
     id: string,
     currentUser: CurrentUser,
@@ -511,13 +577,14 @@ export class FollowUpsService {
 
   private mapWriteError(error: unknown): never {
     if (error instanceof Prisma.PrismaClientKnownRequestError) {
-      // P2003: a foreign key (clientId / enquiryId / assignedToId) pointed at
-      // a row that does not exist. All three are pre-validated above, so this
-      // is only reachable on a concurrent delete — reported as a 400 rather
-      // than surfacing the Prisma constraint name.
+      // P2003: a foreign key (clientId / enquiryId / assignedToId /
+      // customStatusId) pointed at a row that does not exist. All four are
+      // pre-validated above, so this is only reachable on a concurrent
+      // delete — reported as a 400 rather than surfacing the Prisma
+      // constraint name.
       if (error.code === 'P2003') {
         throw new BadRequestException(
-          'Referenced client, enquiry or assigned user no longer exists.',
+          'Referenced client, enquiry, assigned user or follow-up status no longer exists.',
         );
       }
       // P2002: FollowUp carries no unique constraint today, so this is
@@ -558,6 +625,8 @@ export class FollowUpsService {
       outcome: followUp.outcome,
       notes: followUp.notes,
       reminder: followUp.reminder,
+      customStatusId: followUp.customStatusId,
+      customStatus: followUp.customStatus,
       isAutoManaged: followUp.isAutoManaged,
       isOverdue:
         followUp.status === FollowUpStatus.SCHEDULED && followUp.scheduledAt.getTime() < Date.now(),

@@ -13,9 +13,9 @@ import type { EnquiryStageBucket } from "@/types/sales";
 const PIPELINE_STAGES: { stage: EnquiryStageBucket["stage"]; label: string; color: string }[] = [
   { stage: "new", label: "New", color: "var(--stage-new)" },
   { stage: "contacted", label: "Contacted", color: "var(--stage-contacted)" },
-  { stage: "follow-up", label: "Follow-up", color: "var(--stage-followup)" },
-  { stage: "quotation-sent", label: "Quotation", color: "var(--stage-quotation)" },
-  { stage: "negotiation", label: "Negotiation", color: "var(--stage-negotiation)" },
+  { stage: "follow-up-1", label: "Follow-up 1", color: "var(--stage-followup-1)" },
+  { stage: "follow-up-2", label: "Follow-up 2", color: "var(--stage-followup-2)" },
+  { stage: "follow-up-3", label: "Follow-up 3", color: "var(--stage-followup-3)" },
 ];
 
 interface PipelineRow {

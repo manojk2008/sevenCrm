@@ -523,16 +523,16 @@ describe('EnquiriesController (e2e)', () => {
     await request(app.getHttpServer())
       .patch(`/enquiries/${created.body.id}/stage`)
       .set('Cookie', cookies)
-      .send({ stage: 'NEGOTIATION' })
+      .send({ stage: 'FOLLOW_UP_3' })
       .expect(200);
 
     const res = await request(app.getHttpServer())
-      .get('/enquiries?stage=NEGOTIATION&pageSize=100')
+      .get('/enquiries?stage=FOLLOW_UP_3&pageSize=100')
       .set('Cookie', cookies)
       .expect(200);
     expect(res.body.data.map((e: { id: string }) => e.id)).toContain(created.body.id);
     for (const enquiry of res.body.data) {
-      expect(enquiry.stage).toBe('NEGOTIATION');
+      expect(enquiry.stage).toBe('FOLLOW_UP_3');
     }
   });
 
@@ -706,7 +706,7 @@ describe('EnquiriesController (e2e)', () => {
       .send(basePayload())
       .expect(201);
 
-    for (const stage of ['CONTACTED', 'FOLLOW_UP', 'QUOTATION_SENT', 'NEGOTIATION', 'WON']) {
+    for (const stage of ['CONTACTED', 'FOLLOW_UP_1', 'FOLLOW_UP_2', 'FOLLOW_UP_3', 'WON']) {
       const res = await request(app.getHttpServer())
         .patch(`/enquiries/${created.body.id}/stage`)
         .set('Cookie', cookies)
@@ -771,9 +771,9 @@ describe('EnquiriesController (e2e)', () => {
     const reopened = await request(app.getHttpServer())
       .patch(`/enquiries/${created.body.id}/stage`)
       .set('Cookie', cookies)
-      .send({ stage: 'NEGOTIATION' })
+      .send({ stage: 'FOLLOW_UP_3' })
       .expect(200);
-    expect(reopened.body.stage).toBe('NEGOTIATION');
+    expect(reopened.body.stage).toBe('FOLLOW_UP_3');
     expect(reopened.body.lostReason).toBe('Budget frozen');
 
     // a never-lost enquiry still has a null lostReason — none was invented

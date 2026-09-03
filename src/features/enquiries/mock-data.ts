@@ -33,7 +33,7 @@ export const mockEnquiries: Enquiry[] = [
     clientId: "c2",
     clientName: "Tony Stark",
     clientCompany: "Stark Industries",
-    stage: "negotiation",
+    stage: "follow-up-3",
     expectedRevenue: 5500000,
     probability: 80,
     priority: "urgent",

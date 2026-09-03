@@ -33,6 +33,17 @@ export interface FollowUpUserRef {
 }
 
 /**
+ * Trimmed reference to an organization-customizable Follow-up status label,
+ * resolved by the backend from the FollowUpStatusOption relation. See
+ * src/types/follow-up-status-option.ts for the full type and
+ * src/features/follow-ups/api.ts for how it's created/listed.
+ */
+export interface FollowUpStatusOptionRef {
+  id: string;
+  name: string;
+}
+
+/**
  * The canonical Follow-up shape for the whole frontend — mirrors SafeFollowUp
  * in backend/src/follow-ups/follow-ups.service.ts, translated to this
  * codebase's lower-case enum convention by src/features/follow-ups/api.ts.
@@ -75,14 +86,27 @@ export interface FollowUp {
   reminder: boolean;
 
   /**
+   * Organization-customizable business label (see
+   * src/types/follow-up-status-option.ts) — deliberately independent of
+   * `status` above. `status` remains the only internal lifecycle value and
+   * is never derived from this field; this is purely descriptive. `null`
+   * for a Follow-up nothing has ever set one on, including every
+   * auto-managed row — see isAutoManaged below, and never display this as a
+   * substitute for `status` (or vice versa) anywhere in the UI.
+   */
+  customStatusId: string | null;
+  customStatus: FollowUpStatusOptionRef | null;
+
+  /**
    * True only for the single Follow-up an Enquiry's Next-follow-up-date
    * automatically manages (see ensureNextFollowUp in
-   * src/features/enquiries/enquiries-content.tsx and
-   * src/features/clients/clients-content.tsx). Never settable through the
-   * normal create/update API — see createAutoManagedFollowUp in
+   * src/features/enquiries/follow-up-sync.ts, shared by
+   * enquiries-content.tsx and clients-content.tsx). Never settable through
+   * the normal create/update API — see createAutoManagedFollowUp in
    * src/features/follow-ups/api.ts — so a manually-created Follow-up can
-   * never carry this as true. Not surfaced in the Follow-ups UI; it exists
-   * purely as an identification marker.
+   * never carry this as true. Not surfaced in the Follow-ups UI directly,
+   * but used to derive the numbered "Follow-up N" label in
+   * src/features/follow-ups/follow-up-history.tsx.
    */
   isAutoManaged: boolean;
 

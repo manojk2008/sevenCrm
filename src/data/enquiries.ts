@@ -5,9 +5,9 @@ import { users } from './users';
 const stageDistribution: EnquiryStage[] = [
   ...Array(8).fill('new'),
   ...Array(7).fill('contacted'),
-  ...Array(10).fill('follow-up'),
-  ...Array(8).fill('quotation-sent'),
-  ...Array(7).fill('negotiation'),
+  ...Array(10).fill('follow-up-1'),
+  ...Array(8).fill('follow-up-2'),
+  ...Array(7).fill('follow-up-3'),
   ...Array(6).fill('won'),
   ...Array(4).fill('lost'),
 ];

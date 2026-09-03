@@ -30,9 +30,9 @@ export interface EnquiryProduct {
 export type EnquiryStage =
   | "new"
   | "contacted"
-  | "follow-up"
-  | "quotation-sent"
-  | "negotiation"
+  | "follow-up-1"
+  | "follow-up-2"
+  | "follow-up-3"
   | "won"
   | "lost";
 
@@ -98,9 +98,9 @@ export interface EnquiryStageInfo {
 export const ENQUIRY_STAGES: EnquiryStageInfo[] = [
   { key: "new", label: "New", color: "text-slate-700 dark:text-slate-300", bgColor: "bg-slate-100 dark:bg-slate-800", borderColor: "border-slate-300 dark:border-slate-600", icon: "Sparkles" },
   { key: "contacted", label: "Contacted", color: "text-sky-700 dark:text-sky-300", bgColor: "bg-sky-100 dark:bg-sky-900/30", borderColor: "border-sky-300 dark:border-sky-700", icon: "PhoneCall" },
-  { key: "follow-up", label: "Follow-up", color: "text-violet-700 dark:text-violet-300", bgColor: "bg-violet-100 dark:bg-violet-900/30", borderColor: "border-violet-300 dark:border-violet-700", icon: "Clock" },
-  { key: "quotation-sent", label: "Quotation Sent", color: "text-amber-700 dark:text-amber-300", bgColor: "bg-amber-100 dark:bg-amber-900/30", borderColor: "border-amber-300 dark:border-amber-700", icon: "FileText" },
-  { key: "negotiation", label: "Negotiation", color: "text-orange-700 dark:text-orange-300", bgColor: "bg-orange-100 dark:bg-orange-900/30", borderColor: "border-orange-300 dark:border-orange-700", icon: "MessageSquare" },
+  { key: "follow-up-1", label: "Follow-up 1", color: "text-violet-600 dark:text-violet-300", bgColor: "bg-violet-50 dark:bg-violet-900/20", borderColor: "border-violet-200 dark:border-violet-800", icon: "Clock" },
+  { key: "follow-up-2", label: "Follow-up 2", color: "text-violet-700 dark:text-violet-300", bgColor: "bg-violet-100 dark:bg-violet-900/30", borderColor: "border-violet-300 dark:border-violet-700", icon: "Clock" },
+  { key: "follow-up-3", label: "Follow-up 3", color: "text-violet-800 dark:text-violet-200", bgColor: "bg-violet-200 dark:bg-violet-900/40", borderColor: "border-violet-400 dark:border-violet-600", icon: "Clock" },
   { key: "won", label: "Won", color: "text-emerald-700 dark:text-emerald-300", bgColor: "bg-emerald-100 dark:bg-emerald-900/30", borderColor: "border-emerald-300 dark:border-emerald-700", icon: "Trophy" },
   { key: "lost", label: "Lost", color: "text-red-700 dark:text-red-300", bgColor: "bg-red-100 dark:bg-red-900/30", borderColor: "border-red-300 dark:border-red-700", icon: "XCircle" },
 ];

@@ -12,9 +12,9 @@ import type { ProductStatus } from "@/types/product";
 export type BackendEnquiryStage =
   | "NEW"
   | "CONTACTED"
-  | "FOLLOW_UP"
-  | "QUOTATION_SENT"
-  | "NEGOTIATION"
+  | "FOLLOW_UP_1"
+  | "FOLLOW_UP_2"
+  | "FOLLOW_UP_3"
   | "WON"
   | "LOST";
 
@@ -84,9 +84,9 @@ interface BackendPaginatedEnquiries {
 const STAGE_FROM_BACKEND: Record<BackendEnquiryStage, EnquiryStage> = {
   NEW: "new",
   CONTACTED: "contacted",
-  FOLLOW_UP: "follow-up",
-  QUOTATION_SENT: "quotation-sent",
-  NEGOTIATION: "negotiation",
+  FOLLOW_UP_1: "follow-up-1",
+  FOLLOW_UP_2: "follow-up-2",
+  FOLLOW_UP_3: "follow-up-3",
   WON: "won",
   LOST: "lost",
 };
@@ -94,9 +94,9 @@ const STAGE_FROM_BACKEND: Record<BackendEnquiryStage, EnquiryStage> = {
 export const STAGE_TO_BACKEND: Record<EnquiryStage, BackendEnquiryStage> = {
   new: "NEW",
   contacted: "CONTACTED",
-  "follow-up": "FOLLOW_UP",
-  "quotation-sent": "QUOTATION_SENT",
-  negotiation: "NEGOTIATION",
+  "follow-up-1": "FOLLOW_UP_1",
+  "follow-up-2": "FOLLOW_UP_2",
+  "follow-up-3": "FOLLOW_UP_3",
   won: "WON",
   lost: "LOST",
 };

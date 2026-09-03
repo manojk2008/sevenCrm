@@ -76,9 +76,9 @@
   /* Pipeline stage colors */
   --color-stage-new: var(--stage-new);
   --color-stage-contacted: var(--stage-contacted);
-  --color-stage-followup: var(--stage-followup);
-  --color-stage-quotation: var(--stage-quotation);
-  --color-stage-negotiation: var(--stage-negotiation);
+  --color-stage-followup-1: var(--stage-followup-1);
+  --color-stage-followup-2: var(--stage-followup-2);
+  --color-stage-followup-3: var(--stage-followup-3);
   --color-stage-won: var(--stage-won);
   --color-stage-lost: var(--stage-lost);
 }
@@ -138,9 +138,11 @@
   /* Pipeline stage colors */
   --stage-new: oklch(0.550 0.020 260);
   --stage-contacted: oklch(0.550 0.170 230);
-  --stage-followup: oklch(0.550 0.190 295);
-  --stage-quotation: oklch(0.680 0.160 75);
-  --stage-negotiation: oklch(0.610 0.180 50);
+  /* Three graduated shades of the old --stage-followup's violet hue (295),
+     replacing the old singular follow-up/quotation/negotiation stages. */
+  --stage-followup-1: oklch(0.620 0.190 295);
+  --stage-followup-2: oklch(0.550 0.190 295);
+  --stage-followup-3: oklch(0.480 0.190 295);
   --stage-won: oklch(0.520 0.155 155);
   --stage-lost: oklch(0.577 0.245 27);
 
@@ -200,9 +202,9 @@
   /* Pipeline stage colors - dark */
   --stage-new: oklch(0.650 0.020 260);
   --stage-contacted: oklch(0.620 0.180 230);
-  --stage-followup: oklch(0.640 0.200 295);
-  --stage-quotation: oklch(0.720 0.170 75);
-  --stage-negotiation: oklch(0.680 0.190 50);
+  --stage-followup-1: oklch(0.700 0.200 295);
+  --stage-followup-2: oklch(0.640 0.200 295);
+  --stage-followup-3: oklch(0.580 0.200 295);
   --stage-won: oklch(0.600 0.170 155);
   --stage-lost: oklch(0.650 0.200 25);
 

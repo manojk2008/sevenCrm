@@ -235,7 +235,7 @@ describe('DashboardController (e2e)', () => {
       sourceId: referralSource.id,
     });
     await createFixtureEnquiry(orgA.id, clientA2.id, {
-      stage: 'NEGOTIATION',
+      stage: 'FOLLOW_UP_2',
       sourceId: referralSource.id,
     });
     await createFixtureEnquiry(orgA.id, clientA1.id, { stage: 'WON', sourceId: coldCallSource.id });
@@ -346,7 +346,7 @@ describe('DashboardController (e2e)', () => {
     // 2 base clients + 1 activity client = 3.
     expect(res.body.totalClients).toBe(3);
     expect(res.body.totalProducts).toBe(2);
-    // NEW + CONTACTED + NEGOTIATION + the extra activity enquiry (default NEW) = 4.
+    // NEW + CONTACTED + FOLLOW_UP_2 + the extra activity enquiry (default NEW) = 4.
     expect(res.body.openEnquiries).toBe(4);
   });
 

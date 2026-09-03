@@ -69,13 +69,7 @@ import type { ClientRecord, ClientFormValues } from './client-form';
 import { listClients, saveClientForm, updateClientStatus, deleteClient, getClientErrorMessage } from './api';
 import { EnquiryForm } from '@/features/enquiries/enquiry-form';
 import { createEnquiry, type EnquiryFormValues } from '@/features/enquiries/api';
-import type { Enquiry } from '@/types/enquiry';
-import {
-  createAutoManagedFollowUp,
-  updateFollowUp,
-  listFollowUps,
-  getFollowUpErrorMessage,
-} from '@/features/follow-ups/api';
+import { ensureNextFollowUp } from '@/features/enquiries/follow-up-sync';
 import { ApiError } from '@/lib/api';
 import { useAuthStore } from '@/stores/auth-store';
 import { toast } from 'sonner';
@@ -347,69 +341,6 @@ export function ClientsContent() {
       setIsEnquiryFormOpen(true);
     }
     await loadClients();
-  };
-
-  /**
-   * Keeps exactly one *active* (isAutoManaged, status scheduled) automatic
-   * Follow-up in sync with the Enquiry's Next Follow-up date — identical to
-   * enquiries-content.tsx's own ensureNextFollowUp, duplicated here for
-   * this Client → Enquiry creation flow (this file has no dependency on
-   * that one). Identified purely by the isAutoManaged flag — never by
-   * subject text, so a manually-created Follow-up (even one literally
-   * titled "Follow up: <same title>") can never be mistaken for it.
-   * Distinct from, and never touches, the separate, non-isAutoManaged
-   * "Follow up on quotation: <title>" Quotation Sent Follow-up.
-   *
-   * listFollowUps({ enquiryId, isAutoManaged: true }) is the existence
-   * check that makes this safe to call every time: on this create-only
-   * flow it will always find nothing and create, but is written the same
-   * way as the edit-aware version so the two stay behaviorally identical
-   * for a given Enquiry regardless of which flow first created it.
-   */
-  const ensureNextFollowUp = async (enquiry: Enquiry) => {
-    if (!enquiry.expectedCloseDate) return;
-    const subject = `Follow up: ${enquiry.title}`;
-
-    try {
-      const existing = await listFollowUps({
-        enquiryId: enquiry.id,
-        isAutoManaged: true,
-        pageSize: 100,
-      });
-      const match = existing.data.find((followUp) => followUp.status === 'scheduled');
-
-      if (match) {
-        await updateFollowUp(match.id, {
-          clientId: enquiry.clientId,
-          enquiryId: enquiry.id,
-          assignedToId: enquiry.assignedTo || '',
-          subject,
-          description: match.description ?? '',
-          type: match.type,
-          priority: enquiry.priority,
-          scheduledAt: enquiry.expectedCloseDate,
-          notes: match.notes ?? '',
-          reminder: match.reminder,
-        });
-      } else {
-        await createAutoManagedFollowUp({
-          clientId: enquiry.clientId,
-          enquiryId: enquiry.id,
-          assignedToId: enquiry.assignedTo || '',
-          subject,
-          description: '',
-          type: 'call',
-          priority: enquiry.priority,
-          scheduledAt: enquiry.expectedCloseDate,
-          notes: '',
-          reminder: false,
-        });
-      }
-    } catch (error) {
-      toast.warning(
-        `Enquiry saved, but the follow-up could not be synced: ${getFollowUpErrorMessage(error)}`,
-      );
-    }
   };
 
   const handleEnquirySubmit = async (values: EnquiryFormValues) => {

@@ -12,7 +12,9 @@ import type {
   FollowUpClientRef,
   FollowUpEnquiryRef,
   FollowUpUserRef,
+  FollowUpStatusOptionRef,
 } from "@/types/follow-up";
+import type { FollowUpStatusOption } from "@/types/follow-up-status-option";
 import type { Priority } from "@/types/common";
 
 export type BackendFollowUpType = "CALL" | "EMAIL" | "MEETING" | "DEMO" | "VISIT";
@@ -42,6 +44,8 @@ export interface BackendFollowUp {
   outcome: string | null;
   notes: string | null;
   reminder: boolean;
+  customStatusId: string | null;
+  customStatus: FollowUpStatusOptionRef | null;
   isAutoManaged: boolean;
   isOverdue: boolean;
   createdAt: string;
@@ -135,6 +139,8 @@ export function toFollowUp(followUp: BackendFollowUp): FollowUp {
     outcome: followUp.outcome,
     notes: followUp.notes,
     reminder: followUp.reminder,
+    customStatusId: followUp.customStatusId,
+    customStatus: followUp.customStatus,
     isAutoManaged: followUp.isAutoManaged,
     isOverdue: followUp.isOverdue,
     createdAt: followUp.createdAt,
@@ -228,12 +234,21 @@ export interface FollowUpFormValues {
   scheduledAt: string;
   notes: string;
   reminder: boolean;
+  /**
+   * Optional organization-scoped business label (see
+   * src/types/follow-up-status-option.ts). Genuinely optional (`undefined`),
+   * not just "" — the manual Follow-up form never sets this key at all, so
+   * updateFollowUp below can tell "not provided, leave untouched" apart from
+   * "" ("explicitly cleared"). Only the Follow-up Transition Dialog sets it.
+   */
+  customStatusId?: string;
 }
 
 interface CreateFollowUpBody {
   clientId: string;
   enquiryId?: string;
   assignedToId?: string;
+  customStatusId?: string;
   subject: string;
   description?: string;
   type: BackendFollowUpType;
@@ -257,6 +272,7 @@ function toCreateBody(values: FollowUpFormValues): CreateFollowUpBody {
   // note is genuinely "not provided", not a value worth storing.
   if (values.enquiryId) body.enquiryId = values.enquiryId;
   if (values.assignedToId) body.assignedToId = values.assignedToId;
+  if (values.customStatusId) body.customStatusId = values.customStatusId;
   if (values.description) body.description = values.description;
   if (values.notes) body.notes = values.notes;
   return body;
@@ -276,8 +292,9 @@ export async function createFollowUp(values: FollowUpFormValues): Promise<Follow
  * `isAutoManaged: true`. Same body shape as createFollowUp (there is no
  * `isAutoManaged` key to send; the backend sets it unconditionally for this
  * route — see FollowUpsService.createAutoManaged). Used exclusively by the
- * Enquiry-sync helpers (ensureNextFollowUp) in enquiries-content.tsx and
- * clients-content.tsx — never by the manual Follow-up form.
+ * Enquiry-sync helper (ensureNextFollowUp in
+ * src/features/enquiries/follow-up-sync.ts) — never by the manual Follow-up
+ * form.
  */
 export async function createAutoManagedFollowUp(values: FollowUpFormValues): Promise<FollowUp> {
   return toFollowUp(
@@ -296,12 +313,20 @@ export async function createAutoManagedFollowUp(values: FollowUpFormValues): Pro
  *
  * `enquiryId` and `assignedToId` are sent as explicit `null` when cleared —
  * that is how the backend distinguishes "unlink" from "leave untouched".
+ *
+ * `customStatusId` is different: it is only included in the request body at
+ * all when the caller actually set it on `values` (checked via `!==
+ * undefined`, not truthiness) — the manual Follow-up form never sets this
+ * key, so its ordinary saves omit it entirely and the backend's own
+ * `dto.customStatusId !== undefined` check leaves the Follow-up's existing
+ * label completely untouched. Only the Follow-up Transition Dialog sets
+ * this key (to a real id, or "" to explicitly clear it).
  */
 export async function updateFollowUp(
   id: string,
   values: FollowUpFormValues,
 ): Promise<FollowUp> {
-  const body = {
+  const body: Record<string, unknown> = {
     subject: values.subject,
     description: values.description,
     type: TYPE_TO_BACKEND[values.type],
@@ -312,6 +337,9 @@ export async function updateFollowUp(
     enquiryId: values.enquiryId || null,
     assignedToId: values.assignedToId || null,
   };
+  if (values.customStatusId !== undefined) {
+    body.customStatusId = values.customStatusId || null;
+  }
 
   return toFollowUp(
     await apiFetch<BackendFollowUp>(`/follow-ups/${id}`, {
@@ -327,16 +355,26 @@ export async function updateFollowUp(
  * `outcome` is required by the backend when completing and is rejected when
  * blank, so callers must collect it first (see the Complete dialog in
  * follow-ups-content.tsx). `completedAt` is never sent: the server stamps it.
+ *
+ * `customStatusId`, when passed, records an organization-scoped business
+ * label alongside this status change — purely descriptive, never read by
+ * any of the logic above; `status` remains exactly what the caller passed,
+ * exactly as before this parameter existed. Only the Follow-up Transition
+ * Dialog passes it; every existing caller (the Follow-ups page's own
+ * Complete/Cancel actions) keeps omitting it and behaves identically to
+ * before.
  */
 export async function updateFollowUpStatus(
   id: string,
   status: FollowUpStatus,
   outcome?: string,
+  customStatusId?: string,
 ): Promise<FollowUp> {
-  const body: { status: BackendFollowUpStatus; outcome?: string } = {
+  const body: { status: BackendFollowUpStatus; outcome?: string; customStatusId?: string } = {
     status: STATUS_TO_BACKEND[status],
   };
   if (status === "completed" && outcome) body.outcome = outcome;
+  if (customStatusId) body.customStatusId = customStatusId;
 
   return toFollowUp(
     await apiFetch<BackendFollowUp>(`/follow-ups/${id}/status`, {
@@ -353,4 +391,95 @@ export async function updateFollowUpStatus(
  */
 export async function deleteFollowUp(id: string): Promise<void> {
   await apiFetch<{ id: string }>(`/follow-ups/${id}`, { method: "DELETE" });
+}
+
+/**
+ * Total count of active (status=scheduled) Follow-ups — backs the sidebar nav
+ * badge (src/components/layout/sidebar.tsx). Deliberately reuses
+ * `listFollowUps` with the exact same `status: "scheduled"` filter the
+ * Follow-ups page's own Status dropdown offers, rather than a second,
+ * independent counting mechanism — so the badge can never disagree with what
+ * the page shows when a user filters Status -> Scheduled there. `pageSize: 1`
+ * only limits the returned rows; the backend's `total` still comes from a
+ * full `prisma.followUp.count()` over every matching row (see
+ * FollowUpsService.findAllForOrg), so this stays accurate regardless of page
+ * size. Completed/cancelled follow-ups and auto-managed ones are handled
+ * exactly like any other row: the former are excluded by the status filter
+ * itself (the intentional business rule — the badge represents outstanding
+ * work, not history), the latter are not excluded at all.
+ */
+export async function getScheduledFollowUpsCount(): Promise<number> {
+  const result = await listFollowUps({ status: "scheduled", pageSize: 1 });
+  return result.total;
+}
+
+// ---------------------------------------------------------------------------
+// Follow-up Status options — organization-customizable business labels.
+// Mirrors listEnquirySources/createEnquirySource in
+// src/features/enquiries/api.ts (see FollowUpStatusesService on the
+// backend). Deliberately independent of FollowUpStatus above: these carry
+// no lifecycle meaning and are never used to derive `status`.
+// ---------------------------------------------------------------------------
+
+/** Mirrors SafeFollowUpStatusOption in
+ * backend/src/follow-up-statuses/follow-up-statuses.service.ts. */
+export interface BackendFollowUpStatusOption {
+  id: string;
+  organizationId: string;
+  name: string;
+  status: "ACTIVE" | "INACTIVE";
+  createdAt: string;
+  updatedAt: string;
+}
+
+function toFollowUpStatusOption(option: BackendFollowUpStatusOption): FollowUpStatusOption {
+  return {
+    id: option.id,
+    organizationId: option.organizationId,
+    name: option.name,
+    status: option.status === "ACTIVE" ? "active" : "inactive",
+    createdAt: option.createdAt,
+    updatedAt: option.updatedAt,
+  };
+}
+
+/** Follow-up-status-specific 409 wording; falls back to the shared helper otherwise. */
+export function getFollowUpStatusOptionErrorMessage(error: unknown): string {
+  if (error instanceof ApiError && error.status === 409) {
+    return error.message || "This status already exists in your organization.";
+  }
+  return getFriendlyErrorMessage(error);
+}
+
+/**
+ * GET /follow-up-statuses. `status: "active"` is what every picker (the
+ * Follow-up Transition Dialog) requests, so a deactivated option never
+ * appears as a *new* selection — omit it to see everything, including
+ * inactive rows, for a future management view.
+ */
+export async function listFollowUpStatusOptions(
+  params: { search?: string; status?: "active" | "inactive" } = {},
+): Promise<FollowUpStatusOption[]> {
+  const query = new URLSearchParams();
+  if (params.search) query.set("search", params.search);
+  if (params.status) query.set("status", params.status === "active" ? "ACTIVE" : "INACTIVE");
+  const qs = query.toString();
+  const result = await apiFetch<BackendFollowUpStatusOption[]>(
+    `/follow-up-statuses${qs ? `?${qs}` : ""}`,
+  );
+  return result.map(toFollowUpStatusOption);
+}
+
+/**
+ * Creates a new organization-scoped Follow-up status. A duplicate name
+ * (case-insensitive, within the same organization) is rejected with a 409 —
+ * see getFollowUpStatusOptionErrorMessage.
+ */
+export async function createFollowUpStatusOption(name: string): Promise<FollowUpStatusOption> {
+  return toFollowUpStatusOption(
+    await apiFetch<BackendFollowUpStatusOption>("/follow-up-statuses", {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    }),
+  );
 }

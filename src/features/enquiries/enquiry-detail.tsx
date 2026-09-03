@@ -17,6 +17,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Check, Calendar, User, Building, MapPin, DollarSign, Target, Activity, Package, Trash2 } from "lucide-react";
+import { FollowUpHistory } from "@/features/follow-ups/follow-up-history";
 
 interface EnquiryDetailProps {
   open: boolean;
@@ -180,7 +181,7 @@ export function EnquiryDetail({ open, onOpenChange, enquiry, onEdit, onStageChan
             <Tabs defaultValue="details" className="w-full">
               <TabsList className="w-full grid grid-cols-4 bg-muted p-1 rounded-lg">
                 <TabsTrigger value="details">Details</TabsTrigger>
-                <TabsTrigger value="timeline">Timeline</TabsTrigger>
+                <TabsTrigger value="followups">Follow-up History</TabsTrigger>
                 <TabsTrigger value="notes">Notes</TabsTrigger>
                 <TabsTrigger value="files">Files</TabsTrigger>
               </TabsList>
@@ -240,14 +241,13 @@ export function EnquiryDetail({ open, onOpenChange, enquiry, onEdit, onStageChan
                   </div>
                 </TabsContent>
 
-                {/* Timeline / Notes history / Files have no backend yet (not
-                    part of the Enquiries API) — they stay placeholders rather
-                    than showing invented activity. */}
-                <TabsContent value="timeline" className="mt-0">
-                  <div className="text-center text-muted-foreground text-sm py-10">
-                    <Activity className="h-8 w-8 mx-auto mb-3 opacity-20" />
-                    Activity timeline isn&apos;t available yet.
-                  </div>
+                {/* Real Follow-up history for this Enquiry — see
+                    FollowUpHistory's own doc comment. Notes/Files still have
+                    no backend (not part of either the Enquiries or Follow-ups
+                    API) and stay placeholders rather than showing invented
+                    activity. */}
+                <TabsContent value="followups" className="mt-0">
+                  <FollowUpHistory enquiryId={enquiry.id} />
                 </TabsContent>
 
                 <TabsContent value="notes" className="mt-0">
