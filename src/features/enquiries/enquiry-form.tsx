@@ -301,7 +301,6 @@ export function EnquiryForm({ open, onOpenChange, enquiry, onSubmit, initialClie
                   type="number"
                   min={0}
                   step="0.01"
-                  placeholder="500000"
                   value={expectedRevenue}
                   onChange={(e) => setExpectedRevenue(e.target.value)}
                   disabled={isSaving}
@@ -315,7 +314,6 @@ export function EnquiryForm({ open, onOpenChange, enquiry, onSubmit, initialClie
                   min={0}
                   max={100}
                   step={1}
-                  placeholder="50"
                   value={probability}
                   onChange={(e) => setProbability(e.target.value)}
                   disabled={isSaving}
