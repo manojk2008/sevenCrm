@@ -9,14 +9,15 @@ import { getSalesSummary, getSalesErrorMessage } from "@/features/sales/api";
 import type { EnquiryStageBucket } from "@/types/sales";
 
 // Same stage set/order/colour tokens as the Enquiries Kanban board, minus
-// "lost" — this is the forward funnel, not the lost branch.
+// "lost" (displayed as "Failed") — this is the forward funnel, not the
+// failed branch.
 const FUNNEL_STAGES: { stage: EnquiryStageBucket["stage"]; label: string; color: string }[] = [
   { stage: "new", label: "New", color: "var(--stage-new)" },
   { stage: "contacted", label: "Contacted", color: "var(--stage-contacted)" },
   { stage: "follow-up-1", label: "Follow-up 1", color: "var(--stage-followup-1)" },
   { stage: "follow-up-2", label: "Follow-up 2", color: "var(--stage-followup-2)" },
   { stage: "follow-up-3", label: "Follow-up 3", color: "var(--stage-followup-3)" },
-  { stage: "won", label: "Won", color: "var(--stage-won)" },
+  { stage: "won", label: "Succeed", color: "var(--stage-won)" },
 ];
 
 interface FunnelRow {
@@ -117,11 +118,11 @@ export function SalesFunnelSection() {
               </div>
               <div className="text-center">
                 <div className="font-semibold tabular-nums text-success">{formatPercentage(winRate)}</div>
-                <div>Win Rate</div>
+                <div>Success Rate</div>
               </div>
-              {/* Avg Cycle deliberately not shown as a number — no won/lost
-                  timestamp exists to compute it from (same limitation Sales
-                  documents on its own page). */}
+              {/* Avg Cycle deliberately not shown as a number — no
+                  succeeded/failed timestamp exists to compute it from (same
+                  limitation Sales documents on its own page). */}
               <div className="text-center">
                 <div className="font-semibold tabular-nums text-muted-foreground/50">N/A</div>
                 <div>Avg Cycle</div>

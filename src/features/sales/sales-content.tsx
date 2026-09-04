@@ -549,25 +549,25 @@ export function SalesContent() {
             {/* --------------------------------------------- Conversion tab */}
             <TabsContent value="conversion" className="mt-0 space-y-6">
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                <StatCard title="Enquiries Won" value={summary.enquiryConversion.won} icon={TrendingUp} iconColor="text-emerald-600" />
-                <StatCard title="Enquiries Lost" value={summary.enquiryConversion.lost} icon={Ban} iconColor="text-red-600" />
+                <StatCard title="Enquiries Succeeded" value={summary.enquiryConversion.won} icon={TrendingUp} iconColor="text-emerald-600" />
+                <StatCard title="Enquiries Failed" value={summary.enquiryConversion.lost} icon={Ban} iconColor="text-red-600" />
                 <StatCard
-                  title="Enquiry Win Rate"
+                  title="Enquiry Success Rate"
                   value={formatPercentage(summary.enquiryConversion.winRate)}
                   icon={Percent}
                   iconColor="text-indigo-600"
                 />
                 <StatCard
-                  title="Won Enquiry Forecast"
+                  title="Successful Enquiry Forecast"
                   value={formatCurrency(summary.enquiryConversion.wonExpectedRevenue)}
                   icon={Info}
                   iconColor="text-amber-600"
                 />
               </div>
               <p className="text-xs text-muted-foreground">
-                &ldquo;Won Enquiry Forecast&rdquo; is the sum of the expected-revenue figure entered
-                on each won enquiry. It is a forecast, not realized revenue, and is deliberately not
-                combined with Net Accepted Revenue above.
+                &ldquo;Successful Enquiry Forecast&rdquo; is the sum of the expected-revenue figure
+                entered on each succeeded enquiry. It is a forecast, not realized revenue, and is
+                deliberately not combined with Net Accepted Revenue above.
               </p>
 
               <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -610,16 +610,16 @@ export function SalesContent() {
 
                 <Card className="rounded-xl shadow-sm">
                   <CardHeader>
-                    <CardTitle>Recently lost enquiries</CardTitle>
+                    <CardTitle>Recently failed enquiries</CardTitle>
                     <CardDescription>
                       {unavailableByKey.get("lossReasonCategories")?.reason ??
-                        "Lost reasons are free text and are shown exactly as recorded."}
+                        "Failure reasons are free text and are shown exactly as recorded."}
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
                     {lostEnquiries.length === 0 ? (
                       <p className="py-8 text-center text-sm text-muted-foreground">
-                        No lost enquiries in this period.
+                        No failed enquiries in this period.
                       </p>
                     ) : (
                       <div className="divide-y divide-border">
@@ -643,7 +643,7 @@ export function SalesContent() {
                         ))}
                         {lostTotal > lostEnquiries.length && (
                           <p className="pt-3 text-xs text-muted-foreground">
-                            Showing {lostEnquiries.length} of {lostTotal} lost enquiries.
+                            Showing {lostEnquiries.length} of {lostTotal} failed enquiries.
                           </p>
                         )}
                       </div>

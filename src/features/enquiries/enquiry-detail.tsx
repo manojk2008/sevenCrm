@@ -83,7 +83,7 @@ export function EnquiryDetail({ open, onOpenChange, enquiry, onEdit, onStageChan
                         className={s.key === "lost" ? "text-destructive" : undefined}
                         onClick={() => onStageChange?.(s.key)}
                       >
-                        {s.key === "won" ? "Mark as Won" : s.key === "lost" ? "Mark as Lost" : `Move to ${s.label}`}
+                        {s.key === "won" ? "Mark as Succeed" : s.key === "lost" ? "Mark as Failed" : `Move to ${s.label}`}
                       </DropdownMenuItem>
                     ))}
                     {canDelete && (

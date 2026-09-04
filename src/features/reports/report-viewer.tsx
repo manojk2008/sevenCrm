@@ -219,7 +219,7 @@ export function ReportViewer({ type }: ReportViewerProps) {
           <Info className="mt-0.5 h-4 w-4 shrink-0" />
           <p>
             Figures are filtered by the date each quotation or enquiry was <em>raised</em>, not when
-            it was accepted, won, or closed — the database records no such timestamp.
+            it was accepted, succeeded, or closed — the database records no such timestamp.
           </p>
         </div>
       )}
@@ -590,14 +590,14 @@ function ConversionReport({ data }: { data: ConversionReportData }) {
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatTile title="Enquiries Won" value={formatNumber(summary.enquiryConversion.won)} />
-        <StatTile title="Enquiries Lost" value={formatNumber(summary.enquiryConversion.lost)} />
-        <StatTile title="Enquiry Win Rate" value={formatPercentage(summary.enquiryConversion.winRate)} />
+        <StatTile title="Enquiries Succeeded" value={formatNumber(summary.enquiryConversion.won)} />
+        <StatTile title="Enquiries Failed" value={formatNumber(summary.enquiryConversion.lost)} />
+        <StatTile title="Enquiry Success Rate" value={formatPercentage(summary.enquiryConversion.winRate)} />
         <StatTile title="Quotation Acceptance Rate" value={formatPercentage(summary.quotationAcceptanceRate.rate)} />
       </div>
       <p className="text-xs text-muted-foreground">
-        Win rate is won ÷ (won + lost); open enquiries are excluded. Acceptance rate is accepted ÷
-        decided quotations (draft/sent are still open and excluded).
+        Success rate is succeeded ÷ (succeeded + failed); open enquiries are excluded. Acceptance
+        rate is accepted ÷ decided quotations (draft/sent are still open and excluded).
       </p>
       <Card className="rounded-xl">
         <CardHeader>

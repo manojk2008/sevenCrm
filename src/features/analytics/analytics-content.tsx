@@ -245,7 +245,7 @@ export function AnalyticsContent() {
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
             <KpiTile title="Net Revenue" value={formatCurrency(scoped.salesSummary.revenue.netAcceptedRevenue)} icon={IndianRupee} />
             <KpiTile title="New Leads" value={formatNumber(scoped.newLeads)} icon={Users} />
-            <KpiTile title="Enquiry Win Rate" value={formatPercentage(scoped.salesSummary.enquiryConversion.winRate)} icon={Target} />
+            <KpiTile title="Enquiry Success Rate" value={formatPercentage(scoped.salesSummary.enquiryConversion.winRate)} icon={Target} />
             <KpiTile title="Avg Deal Size" value={formatCurrency(scoped.salesSummary.revenue.averageAcceptedValue)} icon={TrendingUp} />
             {unavailableByKey.has("salesVelocity") && <UnavailableStat metric={unavailableByKey.get("salesVelocity")!} />}
             {unavailableByKey.has("cac") && <UnavailableStat metric={unavailableByKey.get("cac")!} />}

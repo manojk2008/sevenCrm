@@ -128,7 +128,7 @@ export function KpiCards() {
       href: "/enquiries",
     },
     {
-      title: "Won Enquiries (This Month)",
+      title: "Succeeded Enquiries (This Month)",
       value: formatNumber(values.wonEnquiries),
       icon: Trophy,
       color: "text-success",
@@ -144,7 +144,7 @@ export function KpiCards() {
       href: "/analytics",
     },
     {
-      title: "Enquiry Win Rate (This Month)",
+      title: "Enquiry Success Rate (This Month)",
       value: formatPercentage(values.winRate),
       icon: Target,
       color: "text-info",

@@ -408,7 +408,7 @@ export class EnquiriesService {
 
   private assertLostReasonPresent(lostReason: string | undefined): void {
     if (!lostReason || lostReason.trim().length === 0) {
-      throw new BadRequestException('lostReason is required when an enquiry is marked LOST.');
+      throw new BadRequestException('A reason is required when an enquiry is marked as failed.');
     }
   }
 

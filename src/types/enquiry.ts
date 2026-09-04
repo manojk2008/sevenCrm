@@ -101,6 +101,6 @@ export const ENQUIRY_STAGES: EnquiryStageInfo[] = [
   { key: "follow-up-1", label: "Follow-up 1", color: "text-violet-600 dark:text-violet-300", bgColor: "bg-violet-50 dark:bg-violet-900/20", borderColor: "border-violet-200 dark:border-violet-800", icon: "Clock" },
   { key: "follow-up-2", label: "Follow-up 2", color: "text-violet-700 dark:text-violet-300", bgColor: "bg-violet-100 dark:bg-violet-900/30", borderColor: "border-violet-300 dark:border-violet-700", icon: "Clock" },
   { key: "follow-up-3", label: "Follow-up 3", color: "text-violet-800 dark:text-violet-200", bgColor: "bg-violet-200 dark:bg-violet-900/40", borderColor: "border-violet-400 dark:border-violet-600", icon: "Clock" },
-  { key: "won", label: "Won", color: "text-emerald-700 dark:text-emerald-300", bgColor: "bg-emerald-100 dark:bg-emerald-900/30", borderColor: "border-emerald-300 dark:border-emerald-700", icon: "Trophy" },
-  { key: "lost", label: "Lost", color: "text-red-700 dark:text-red-300", bgColor: "bg-red-100 dark:bg-red-900/30", borderColor: "border-red-300 dark:border-red-700", icon: "XCircle" },
+  { key: "won", label: "Succeed", color: "text-emerald-700 dark:text-emerald-300", bgColor: "bg-emerald-100 dark:bg-emerald-900/30", borderColor: "border-emerald-300 dark:border-emerald-700", icon: "Trophy" },
+  { key: "lost", label: "Failed", color: "text-red-700 dark:text-red-300", bgColor: "bg-red-100 dark:bg-red-900/30", borderColor: "border-red-300 dark:border-red-700", icon: "XCircle" },
 ];

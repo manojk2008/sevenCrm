@@ -112,10 +112,12 @@ export function EnquiriesContent() {
 
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
-  // Seeded from `?stage=` when present and valid (e.g. the Dashboard's "Won
-  // Enquiries" KPI card links to `/enquiries?stage=won`) — falls back to the
-  // existing unfiltered default otherwise. Read once via a lazy initializer;
-  // the existing Filter dropdown is the only way to change it afterward.
+  // Seeded from `?stage=` when present and valid (e.g. the Dashboard's
+  // "Succeeded Enquiries" KPI card links to `/enquiries?stage=won` — the
+  // wire value stays "won", only the display label reads "Succeed") — falls
+  // back to the existing unfiltered default otherwise. Read once via a lazy
+  // initializer; the existing Filter dropdown is the only way to change it
+  // afterward.
   const [stageFilter, setStageFilter] = useState<EnquiryStage | undefined>(() => {
     const param = searchParams.get("stage");
     return isEnquiryStage(param) ? param : undefined;
@@ -123,8 +125,9 @@ export function EnquiriesContent() {
   const [priorityFilter, setPriorityFilter] = useState<Priority | undefined>(undefined);
   const [subFilter, setSubFilter] = useState<SubFilter>("all");
 
-  // Pending LOST transition awaiting a reason. `previousStage` is what the
-  // card is rolled back to if the user cancels or the request fails.
+  // Pending LOST (displayed as "Failed") transition awaiting a reason.
+  // `previousStage` is what the card is rolled back to if the user cancels
+  // or the request fails.
   const [pendingLost, setPendingLost] = useState<
     { id: string; previousStage: EnquiryStage } | null
   >(null);
@@ -311,8 +314,9 @@ export function EnquiriesContent() {
 
   const handleStageChange = useCallback(
     (id: string, newStage: EnquiryStage, previousStage: EnquiryStage) => {
-      // LOST needs a reason before the request can be made at all — the
-      // backend rejects a blank one, so collect it first.
+      // LOST (displayed as "Failed") needs a reason before the request can
+      // be made at all — the backend rejects a blank one, so collect it
+      // first.
       if (newStage === "lost") {
         setLostReasonInput("");
         setPendingLost({ id, previousStage });
@@ -463,7 +467,7 @@ export function EnquiriesContent() {
       );
       setPendingLost(null);
       setLostReasonInput("");
-      handleApiError(error, "Couldn't mark that enquiry as lost.");
+      handleApiError(error, "Couldn't mark that enquiry as failed.");
     } finally {
       setIsSavingStage(false);
     }
@@ -782,26 +786,27 @@ export function EnquiriesContent() {
         />
       )}
 
-      {/* Moving a card to Lost needs a reason: the API requires a non-blank
-          lostReason for that transition and rejects the request without one. */}
+      {/* Moving a card to Failed (internal stage: LOST) needs a reason: the
+          API requires a non-blank lostReason for that transition and rejects
+          the request without one. */}
       <AlertDialog
         open={!!pendingLost}
         onOpenChange={(open) => !open && !isSavingStage && cancelLostTransition()}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Mark this enquiry as lost?</AlertDialogTitle>
+            <AlertDialogTitle>Mark this enquiry as failed?</AlertDialogTitle>
             <AlertDialogDescription>
-              Record why this enquiry was lost. You can move it back to another stage later.
+              Record why this enquiry failed. You can move it back to another stage later.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="space-y-2">
-            <Label htmlFor="lost-reason">Reason for loss *</Label>
+            <Label htmlFor="lost-reason">Reason for failure *</Label>
             <Textarea
               id="lost-reason"
               value={lostReasonInput}
               onChange={(e) => setLostReasonInput(e.target.value)}
-              placeholder="Why was this enquiry lost?"
+              placeholder="Why did this enquiry fail?"
               disabled={isSavingStage}
             />
           </div>
@@ -813,7 +818,7 @@ export function EnquiriesContent() {
               disabled={!lostReasonInput.trim() || isSavingStage}
               onClick={confirmLostTransition}
             >
-              {isSavingStage ? "Saving…" : "Mark as lost"}
+              {isSavingStage ? "Saving…" : "Mark as failed"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
